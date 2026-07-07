@@ -119,5 +119,7 @@ php artisan db:seed --class=Database\\Seeders\\MesConfigSeeder
   reali del committente si aggiungono implementando `ExportTemplateInterface` senza toccare il core (§10).
 - **Offline (Fase 6)**: infrastruttura completa; la verifica end-to-end (service worker, Background Sync,
   caduta rete) va fatta sul server in HTTPS o su `localhost` (i SW non girano in dev http).
-- **Admin config UI**: reparti/fasi/mapping/utenti sono creati dal `MesConfigSeeder`; una UI admin
-  dedicata e' un'estensione futura (i permessi sono gia' applicati). Icone PWA in SVG: valutare PNG 192/512.
+- **Pannello Admin** (`/admin`, solo ruolo Admin): CRUD completo per reparti, tipi fase/step,
+  mappatura articolo→reparto e utenti (staff email+password / operatori nome+PIN+reparti, con PIN
+  unico e hashato). Il `MesConfigSeeder` resta per il bootstrap iniziale. Registrazione pubblica
+  (`/register`) **disabilitata**: gli utenti si creano solo da Admin. Icone PWA in SVG: valutare PNG 192/512.

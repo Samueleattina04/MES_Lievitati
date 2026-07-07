@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Controllers\Admin\ArticoloConfigController;
+use App\Http\Controllers\Admin\HomeController as AdminHomeController;
+use App\Http\Controllers\Admin\RepartoController;
+use App\Http\Controllers\Admin\TipoFaseController;
+use App\Http\Controllers\Admin\UtenteController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EsportazioneController;
 use App\Http\Controllers\GenealogiaController;
@@ -85,6 +90,33 @@ Route::middleware('auth')->group(function () {
     Route::middleware('ruolo:pianificazione,admin,backoffice')->group(function () {
         Route::get('/ordini/{ordine}', [OrdineController::class, 'show'])->name('ordini.show');
     });
+});
+
+/*
+| Amministrazione (§7): solo ruolo Admin. CRUD reparti, tipi fase, mappatura articoli, utenti.
+*/
+Route::middleware(['auth', 'ruolo:admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/', [AdminHomeController::class, 'index'])->name('index');
+
+    Route::get('reparti', [RepartoController::class, 'index'])->name('reparti.index');
+    Route::post('reparti', [RepartoController::class, 'store'])->name('reparti.store');
+    Route::put('reparti/{reparto}', [RepartoController::class, 'update'])->name('reparti.update');
+    Route::delete('reparti/{reparto}', [RepartoController::class, 'destroy'])->name('reparti.destroy');
+
+    Route::get('tipi-fase', [TipoFaseController::class, 'index'])->name('tipi-fase.index');
+    Route::post('tipi-fase', [TipoFaseController::class, 'store'])->name('tipi-fase.store');
+    Route::put('tipi-fase/{tipoFase}', [TipoFaseController::class, 'update'])->name('tipi-fase.update');
+    Route::delete('tipi-fase/{tipoFase}', [TipoFaseController::class, 'destroy'])->name('tipi-fase.destroy');
+
+    Route::get('articoli-config', [ArticoloConfigController::class, 'index'])->name('articoli-config.index');
+    Route::post('articoli-config', [ArticoloConfigController::class, 'store'])->name('articoli-config.store');
+    Route::put('articoli-config/{config}', [ArticoloConfigController::class, 'update'])->name('articoli-config.update');
+    Route::delete('articoli-config/{config}', [ArticoloConfigController::class, 'destroy'])->name('articoli-config.destroy');
+
+    Route::get('utenti', [UtenteController::class, 'index'])->name('utenti.index');
+    Route::post('utenti', [UtenteController::class, 'store'])->name('utenti.store');
+    Route::put('utenti/{utente}', [UtenteController::class, 'update'])->name('utenti.update');
+    Route::delete('utenti/{utente}', [UtenteController::class, 'destroy'])->name('utenti.destroy');
 });
 
 require __DIR__.'/auth.php';
