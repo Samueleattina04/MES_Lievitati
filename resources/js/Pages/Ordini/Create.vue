@@ -7,10 +7,13 @@ import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
+// NB: non usare 'data' come nome di campo: e' un metodo riservato di useForm (form.data()),
+// altrimenti .post() fallisce con "this.data is not a function". Usiamo 'data_ordine' e lo
+// rimappiamo su 'data' con transform() prima dell'invio (il backend resta invariato).
 const form = useForm({
     articolo_finito_codice: '',
     quantita: '',
-    data: new Date().toISOString().slice(0, 10),
+    data_ordine: new Date().toISOString().slice(0, 10),
     note: '',
 });
 
@@ -50,7 +53,14 @@ function seleziona(articolo) {
 }
 
 function submit() {
-    form.post(route('ordini.store'));
+    form
+        .transform((d) => ({
+            articolo_finito_codice: d.articolo_finito_codice,
+            quantita: d.quantita,
+            data: d.data_ordine,
+            note: d.note,
+        }))
+        .post(route('ordini.store'));
 }
 </script>
 
@@ -106,7 +116,7 @@ function submit() {
                         </div>
                         <div>
                             <InputLabel for="data" value="Data ordine" />
-                            <TextInput id="data" v-model="form.data" type="date" class="mt-1 block w-full" />
+                            <TextInput id="data" v-model="form.data_ordine" type="date" class="mt-1 block w-full" />
                             <InputError class="mt-2" :message="form.errors.data" />
                         </div>
                     </div>
