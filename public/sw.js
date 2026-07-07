@@ -6,7 +6,7 @@
  * essere sostituito/generato con Workbox mantenendo lo stesso contratto verso /api/sync. // TODO-DECISIONE
  */
 
-const CACHE = 'mes-cache-v2';
+const CACHE = 'mes-cache-v3';
 const APP_SHELL = ['/manifest.webmanifest', '/icons/icon.svg', '/operatore/login'];
 
 // --- IndexedDB (stesso schema del lato pagina: db.js) ---
@@ -63,6 +63,7 @@ async function flushCoda() {
     if (azioni.length === 0) {
         return;
     }
+    console.info('[MES sw] flushCoda — azioni in coda:', azioni.length);
 
     const resp = await fetch('/api/sync', {
         method: 'POST',
@@ -180,6 +181,7 @@ function fallbackOffline(req) {
 // --- Background Sync (Chrome/Edge) ---
 self.addEventListener('sync', (event) => {
     if (event.tag === 'mes-sync') {
+        console.info('[MES sw] evento Background Sync ricevuto (tag:', event.tag + ').');
         event.waitUntil(flushCoda());
     }
 });
