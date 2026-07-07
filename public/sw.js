@@ -6,7 +6,7 @@
  * essere sostituito/generato con Workbox mantenendo lo stesso contratto verso /api/sync. // TODO-DECISIONE
  */
 
-const CACHE = 'mes-cache-v1';
+const CACHE = 'mes-cache-v2';
 const APP_SHELL = ['/manifest.webmanifest', '/icons/icon.svg', '/operatore/login'];
 
 // --- IndexedDB (stesso schema del lato pagina: db.js) ---
@@ -108,34 +108,74 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Asset buildati (hash nel nome): stale-while-revalidate.
-    if (url.pathname.startsWith('/build/')) {
-        event.respondWith(
-            caches.open(CACHE).then(async (cache) => {
-                const cached = await cache.match(req);
-                const network = fetch(req).then((res) => {
-                    if (res.ok) cache.put(req, res.clone());
-                    return res;
-                }).catch(() => cached);
-                return cached || network;
-            }),
-        );
-        return;
-    }
-
-    // Navigazioni e dati operatore: network-first con fallback cache (l'apertura ordine popola la cache).
+    // Asset buildati (hash nel nome): stale-while-revalidate. Altrimenti navigazioni/dati: network-first.
+    // Entrambe le strategie garantiscono SEMPRE un Response (mai una promise che risolve undefined).
     event.respondWith(
-        fetch(req)
-            .then((res) => {
-                if (res.ok && (req.mode === 'navigate' || url.pathname.startsWith('/operatore'))) {
-                    const clone = res.clone();
-                    caches.open(CACHE).then((c) => c.put(req, clone));
-                }
-                return res;
-            })
-            .catch(() => caches.match(req)),
+        url.pathname.startsWith('/build/') ? staleWhileRevalidate(req) : networkFirst(req, url),
     );
 });
+
+async function staleWhileRevalidate(req) {
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(req);
+    const fromNetwork = fetch(req)
+        .then((res) => {
+            if (res && res.ok) {
+                cache.put(req, res.clone());
+            }
+            return res;
+        })
+        .catch(() => null);
+
+    // Cache hit -> subito; altrimenti aspetta la rete; se anche quella fallisce -> fallback.
+    const res = cached || (await fromNetwork);
+    return res || fallbackOffline(req);
+}
+
+async function networkFirst(req, url) {
+    try {
+        const res = await fetch(req);
+        if (res && res.ok && (req.mode === 'navigate' || url.pathname.startsWith('/operatore'))) {
+            const cache = await caches.open(CACHE);
+            cache.put(req, res.clone());
+        }
+        return res; // sempre un Response (anche 4xx/5xx: e' comunque valido)
+    } catch {
+        // Rete non disponibile: prova la cache.
+        const cached = await caches.match(req);
+        if (cached) {
+            return cached;
+        }
+        // Per una navigazione non in cache, servi la shell dell'app (se presente).
+        if (req.mode === 'navigate') {
+            const shell = (await caches.match('/operatore')) || (await caches.match('/operatore/login'));
+            if (shell) {
+                return shell;
+            }
+        }
+        return fallbackOffline(req);
+    }
+}
+
+/** Fallback che restituisce SEMPRE un Response valido quando non c'e' ne' rete ne' cache. */
+function fallbackOffline(req) {
+    if (req.mode === 'navigate') {
+        return new Response(
+            '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            + '<title>Offline</title>'
+            + '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;'
+            + 'font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;text-align:center">'
+            + '<div><h1>Offline</h1><p>Questa pagina non e\' disponibile offline.<br>Riconnettiti e riprova.</p></div>',
+            { status: 503, statusText: 'Offline', headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+        );
+    }
+
+    return new Response(JSON.stringify({ offline: true }), {
+        status: 503,
+        statusText: 'Offline',
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
 
 // --- Background Sync (Chrome/Edge) ---
 self.addEventListener('sync', (event) => {
