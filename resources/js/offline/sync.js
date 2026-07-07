@@ -83,7 +83,14 @@ export async function flush() {
  *   { stato: 'accodata' }  offline o rete KO: verra' sincronizzata
  */
 export async function azione(tipo, payload) {
-    const record = { client_uuid: uuid(), tipo_azione: tipo, payload, created_at: Date.now() };
+    // Spacchetta eventuali oggetti reattivi Vue (Proxy) in dati JS puri: necessario per la coda
+    // IndexedDB (structured clone) e comunque coerente con l'invio JSON a /api/sync.
+    const record = {
+        client_uuid: uuid(),
+        tipo_azione: tipo,
+        payload: JSON.parse(JSON.stringify(payload)),
+        created_at: Date.now(),
+    };
 
     if (!navigator.onLine) {
         await aggiungi(record);

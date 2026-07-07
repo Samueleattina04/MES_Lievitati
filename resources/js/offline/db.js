@@ -20,12 +20,16 @@ function openDb() {
 }
 
 export function aggiungi(azione) {
+    // IndexedDB usa lo structured clone e NON puo' clonare i Proxy reattivi di Vue.
+    // Serializziamo a JS puro (dati sempre JSON-safe) prima del put per evitare DataCloneError.
+    const record = JSON.parse(JSON.stringify(azione));
+
     return openDb().then(
         (db) =>
             new Promise((resolve, reject) => {
                 const tx = db.transaction(STORE, 'readwrite');
-                tx.objectStore(STORE).put(azione);
-                tx.oncomplete = () => resolve(azione);
+                tx.objectStore(STORE).put(record);
+                tx.oncomplete = () => resolve(record);
                 tx.onerror = () => reject(tx.error);
             }),
     );
