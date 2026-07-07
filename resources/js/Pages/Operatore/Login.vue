@@ -1,6 +1,7 @@
 <script setup>
+import { online } from '@/offline/sync';
 import { Head, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 const props = defineProps({
     lunghezzaMin: { type: Number, default: 4 },
@@ -8,10 +9,12 @@ const props = defineProps({
 });
 
 const form = useForm({ pin: '' });
+const avviso = ref('');
 
 const digits = computed(() => form.pin.split(''));
 
 function premi(n) {
+    avviso.value = '';
     if (form.pin.length < props.lunghezzaMax) {
         form.pin += String(n);
     }
@@ -23,7 +26,16 @@ function azzera() {
     form.pin = '';
 }
 function entra() {
+    avviso.value = '';
     if (form.pin.length < props.lunghezzaMin) {
+        return;
+    }
+    // Il login richiede la rete (crea la sessione): senza connessione non c'e' nulla da accodare.
+    // Intercettiamo qui per evitare un AxiosError non gestito in console.
+    if (! navigator.onLine) {
+        avviso.value = 'Connessione assente: il login richiede una connessione di rete. Riprova quando torni online.';
+        azzera();
+
         return;
     }
     form.post(route('operatore.pin-login'), {
@@ -38,6 +50,11 @@ function entra() {
     <div class="flex min-h-screen flex-col items-center justify-center bg-slate-900 p-6 text-slate-100">
         <h1 class="mb-2 text-2xl font-bold">Accesso reparto</h1>
         <p class="mb-6 text-slate-400">Inserisci il tuo PIN</p>
+
+        <!-- Avviso offline / connessione: il login richiede la rete (§8). -->
+        <p v-if="!online || avviso" class="mb-4 max-w-sm rounded-lg bg-amber-600 px-4 py-3 text-center text-base font-semibold">
+            {{ avviso || 'Sei offline: il login richiede una connessione di rete. Riprova quando torni online.' }}
+        </p>
 
         <!-- Indicatori PIN -->
         <div class="mb-4 flex gap-3">
@@ -78,10 +95,10 @@ function entra() {
         <button
             type="button"
             class="mt-6 h-16 w-64 rounded-2xl bg-emerald-600 text-2xl font-bold active:bg-emerald-500 disabled:opacity-40"
-            :disabled="form.pin.length < lunghezzaMin || form.processing"
+            :disabled="form.pin.length < lunghezzaMin || form.processing || !online"
             @click="entra"
         >
-            Entra
+            {{ online ? 'Entra' : 'Offline' }}
         </button>
     </div>
 </template>
