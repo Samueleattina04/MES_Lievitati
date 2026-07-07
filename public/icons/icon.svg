@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <!-- Panettone stilizzato -->
+  <path d="M160 210 h192 l-16 150 a24 24 0 0 1 -24 22 h-112 a24 24 0 0 1 -24 -22 z" fill="#f59e0b"/>
+  <path d="M150 210 q106 -60 212 0 q-106 40 -212 0 z" fill="#fbbf24"/>
+  <circle cx="230" cy="300" r="10" fill="#7c2d12"/>
+  <circle cx="286" cy="330" r="10" fill="#7c2d12"/>
+  <circle cx="256" cy="360" r="9" fill="#7c2d12"/>
+  <text x="256" y="470" font-family="Arial, sans-serif" font-size="60" font-weight="bold" fill="#e2e8f0" text-anchor="middle">MES</text>
+</svg>

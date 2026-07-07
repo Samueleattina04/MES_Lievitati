@@ -1,0 +1,395 @@
+{
+    "articolo_radice": "PAN0104",
+    "righe": [
+        {
+            "livello": 0,
+            "articolo": "PAN0104",
+            "articolo_padre": null,
+            "descrizione": "Panettone pistacchio, ananas e albicocca",
+            "udm": "PZ",
+            "qta_per_unita": 1,
+            "is_prodotto": true,
+            "posizione": 0
+        },
+        {
+            "livello": 1,
+            "articolo": "PANPIST/ANANAS/ALB750",
+            "articolo_padre": "PAN0104",
+            "descrizione": "Semilavorato panettone gusto ananas/albicocca 750g",
+            "udm": "PZ",
+            "qta_per_unita": 1,
+            "is_prodotto": true,
+            "posizione": 1
+        },
+        {
+            "livello": 2,
+            "articolo": "IMPASTOTRADPIST/AN/ALB",
+            "articolo_padre": "PANPIST/ANANAS/ALB750",
+            "descrizione": "Impasto tradizionale gusto ananas/albicocca",
+            "udm": "KG",
+            "qta_per_unita": 0.75,
+            "is_prodotto": true,
+            "posizione": 2
+        },
+        {
+            "livello": 3,
+            "articolo": "IMPASTOCOLOMBE/PANETTONI",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Impasto base colombe/panettoni (madre)",
+            "udm": "KG",
+            "qta_per_unita": 0.6,
+            "is_prodotto": true,
+            "posizione": 3
+        },
+        {
+            "livello": 4,
+            "articolo": "ZUCCHERO-SEM",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Zucchero semolato",
+            "udm": "KG",
+            "qta_per_unita": 0.15,
+            "is_prodotto": false,
+            "posizione": 4
+        },
+        {
+            "livello": 4,
+            "articolo": "BURRO-P",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Burro 82%",
+            "udm": "KG",
+            "qta_per_unita": 0.12,
+            "is_prodotto": false,
+            "posizione": 5
+        },
+        {
+            "livello": 4,
+            "articolo": "TUORLO",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Tuorlo d'uovo",
+            "udm": "KG",
+            "qta_per_unita": 0.06,
+            "is_prodotto": false,
+            "posizione": 6
+        },
+        {
+            "livello": 4,
+            "articolo": "PT0LI25",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Farina PT0LI25",
+            "udm": "KG",
+            "qta_per_unita": 0.18,
+            "is_prodotto": false,
+            "posizione": 7
+        },
+        {
+            "livello": 4,
+            "articolo": "MIELE",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Miele",
+            "udm": "KG",
+            "qta_per_unita": 0.018,
+            "is_prodotto": false,
+            "posizione": 8
+        },
+        {
+            "livello": 4,
+            "articolo": "SALE",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Sale",
+            "udm": "KG",
+            "qta_per_unita": 0.006,
+            "is_prodotto": false,
+            "posizione": 9
+        },
+        {
+            "livello": 4,
+            "articolo": "MADRE492",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Lievito madre 492",
+            "udm": "KG",
+            "qta_per_unita": 0.09,
+            "is_prodotto": false,
+            "posizione": 10
+        },
+        {
+            "livello": 4,
+            "articolo": "SCIROPPO-GLU",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Sciroppo di glucosio",
+            "udm": "KG",
+            "qta_per_unita": 0.03,
+            "is_prodotto": false,
+            "posizione": 11
+        },
+        {
+            "livello": 4,
+            "articolo": "LATTE-POLV",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Latte in polvere",
+            "udm": "KG",
+            "qta_per_unita": 0.024,
+            "is_prodotto": false,
+            "posizione": 12
+        },
+        {
+            "livello": 4,
+            "articolo": "AROMA-PAN",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Aroma panettone",
+            "udm": "KG",
+            "qta_per_unita": 0.006,
+            "is_prodotto": false,
+            "posizione": 13
+        },
+        {
+            "livello": 4,
+            "articolo": "ENZIMI",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Enzimi",
+            "udm": "KG",
+            "qta_per_unita": 0.003,
+            "is_prodotto": false,
+            "posizione": 14
+        },
+        {
+            "livello": 4,
+            "articolo": "ACQUA",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Acqua",
+            "udm": "L",
+            "qta_per_unita": 0.075,
+            "is_prodotto": false,
+            "posizione": 15
+        },
+        {
+            "livello": 4,
+            "articolo": "LIEVITO",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Lievito",
+            "udm": "KG",
+            "qta_per_unita": 0.012,
+            "is_prodotto": false,
+            "posizione": 16
+        },
+        {
+            "livello": 4,
+            "articolo": "EMULSIONANTE",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Emulsionante",
+            "udm": "KG",
+            "qta_per_unita": 0.006,
+            "is_prodotto": false,
+            "posizione": 17
+        },
+        {
+            "livello": 4,
+            "articolo": "VANIGLIA-BACC",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Vaniglia in bacche",
+            "udm": "KG",
+            "qta_per_unita": 0.003,
+            "is_prodotto": false,
+            "posizione": 18
+        },
+        {
+            "livello": 4,
+            "articolo": "SCORZA-ARANCIA",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Scorza d'arancia",
+            "udm": "KG",
+            "qta_per_unita": 0.009,
+            "is_prodotto": false,
+            "posizione": 19
+        },
+        {
+            "livello": 4,
+            "articolo": "UVETTA",
+            "articolo_padre": "IMPASTOCOLOMBE/PANETTONI",
+            "descrizione": "Uvetta",
+            "udm": "KG",
+            "qta_per_unita": 0.03,
+            "is_prodotto": false,
+            "posizione": 20
+        },
+        {
+            "livello": 3,
+            "articolo": "ANANAS-CAND",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Ananas candita",
+            "udm": "KG",
+            "qta_per_unita": 0.3375,
+            "is_prodotto": false,
+            "posizione": 21
+        },
+        {
+            "livello": 3,
+            "articolo": "ALBICOCCA-CUB",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Cubetti di albicocca",
+            "udm": "KG",
+            "qta_per_unita": 0.3375,
+            "is_prodotto": false,
+            "posizione": 22
+        },
+        {
+            "livello": 3,
+            "articolo": "PISTACCHIO",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Pistacchio",
+            "udm": "KG",
+            "qta_per_unita": 0.16875,
+            "is_prodotto": false,
+            "posizione": 23
+        },
+        {
+            "livello": 3,
+            "articolo": "GLASSA",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Glassa",
+            "udm": "KG",
+            "qta_per_unita": 0.675,
+            "is_prodotto": false,
+            "posizione": 24
+        },
+        {
+            "livello": 3,
+            "articolo": "ZUCCHERO-GRAN",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Zucchero in granella",
+            "udm": "KG",
+            "qta_per_unita": 0.225,
+            "is_prodotto": false,
+            "posizione": 25
+        },
+        {
+            "livello": 3,
+            "articolo": "ALBUME",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Albume d'uovo",
+            "udm": "KG",
+            "qta_per_unita": 0.15,
+            "is_prodotto": false,
+            "posizione": 26
+        },
+        {
+            "livello": 3,
+            "articolo": "OLIO-GIRA",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Olio di girasole",
+            "udm": "L",
+            "qta_per_unita": 0.075,
+            "is_prodotto": false,
+            "posizione": 27
+        },
+        {
+            "livello": 3,
+            "articolo": "AROMA-VAN",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Aroma vaniglia",
+            "udm": "KG",
+            "qta_per_unita": 0.0375,
+            "is_prodotto": false,
+            "posizione": 28
+        },
+        {
+            "livello": 3,
+            "articolo": "VINO-ZIB",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Vino zibibbo",
+            "udm": "L",
+            "qta_per_unita": 0.0375,
+            "is_prodotto": false,
+            "posizione": 29
+        },
+        {
+            "livello": 3,
+            "articolo": "BURRO-P",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Burro 82%",
+            "udm": "KG",
+            "qta_per_unita": 0,
+            "is_prodotto": false,
+            "posizione": 30
+        },
+        {
+            "livello": 3,
+            "articolo": "PT0LI25",
+            "articolo_padre": "IMPASTOTRADPIST/AN/ALB",
+            "descrizione": "Farina PT0LI25",
+            "udm": "KG",
+            "qta_per_unita": 0.075,
+            "is_prodotto": false,
+            "posizione": 31
+        },
+        {
+            "livello": 2,
+            "articolo": "BUSTA-PP",
+            "articolo_padre": "PANPIST/ANANAS/ALB750",
+            "descrizione": "Busta polipropilene",
+            "udm": "PZ",
+            "qta_per_unita": 1,
+            "is_prodotto": false,
+            "posizione": 32
+        },
+        {
+            "livello": 2,
+            "articolo": "ALCOOL",
+            "articolo_padre": "PANPIST/ANANAS/ALB750",
+            "descrizione": "Alcool alimentare",
+            "udm": "L",
+            "qta_per_unita": 0.1,
+            "is_prodotto": false,
+            "posizione": 33
+        },
+        {
+            "livello": 1,
+            "articolo": "INCARTO0104",
+            "articolo_padre": "PAN0104",
+            "descrizione": "Incarto panettone gusto 1",
+            "udm": "PZ",
+            "qta_per_unita": 1,
+            "is_prodotto": false,
+            "posizione": 34
+        },
+        {
+            "livello": 1,
+            "articolo": "NASTRO01",
+            "articolo_padre": "PAN0104",
+            "descrizione": "Nastro decorativo",
+            "udm": "PZ",
+            "qta_per_unita": 1,
+            "is_prodotto": false,
+            "posizione": 35
+        },
+        {
+            "livello": 1,
+            "articolo": "PENDAGLIO01",
+            "articolo_padre": "PAN0104",
+            "descrizione": "Pendaglio",
+            "udm": "PZ",
+            "qta_per_unita": 1,
+            "is_prodotto": false,
+            "posizione": 36
+        },
+        {
+            "livello": 1,
+            "articolo": "ETICH0104A",
+            "articolo_padre": "PAN0104",
+            "descrizione": "Etichetta fronte PAN0104",
+            "udm": "PZ",
+            "qta_per_unita": 1,
+            "is_prodotto": false,
+            "posizione": 37
+        },
+        {
+            "livello": 1,
+            "articolo": "ETICH0104B",
+            "articolo_padre": "PAN0104",
+            "descrizione": "Etichetta retro PAN0104",
+            "udm": "PZ",
+            "qta_per_unita": 1,
+            "is_prodotto": false,
+            "posizione": 38
+        }
+    ]
+}

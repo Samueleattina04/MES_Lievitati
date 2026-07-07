@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& php -v)",
+      "PowerShell(& composer --version)",
+      "PowerShell(& node -v)",
+      "PowerShell(& npm -v)",
+      "PowerShell(& mysql --version)",
+      "PowerShell(& php -m)",
+      "PowerShell(& php --ini)"
+    ]
+  }
+}
