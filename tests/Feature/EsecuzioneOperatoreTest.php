@@ -95,10 +95,15 @@ final class EsecuzioneOperatoreTest extends TestCase
             $this->workflow->avvia($stepDaLavorare, $this->operatore);
             if ($stepDaLavorare->consuma_materiali) {
                 foreach ($stepDaLavorare->fase->materiali as $mat) {
-                    $this->workflow->confermaMateriale($mat, (float) $mat->quantita_pianificata, $this->operatore);
+                    // I materiali con flag_lotto richiedono almeno un lotto (§6).
+                    $lotti = $mat->flag_lotto
+                        ? [['lotto' => 'LOT-'.$mat->id, 'quantita' => (float) $mat->quantita_pianificata]]
+                        : [];
+                    $this->workflow->confermaMateriale($mat, (float) $mat->quantita_pianificata, $this->operatore, $lotti);
                 }
             }
-            $this->workflow->chiudiStep($stepDaLavorare->fresh(), $this->operatore);
+            // I nodi prodotti richiedono il lotto in uscita alla chiusura (genealogia, §6).
+            $this->workflow->chiudiStep($stepDaLavorare->fresh(), $this->operatore, null, 'OUT-'.$stepDaLavorare->fase_ordine_id);
         }
 
         self::assertSame(0, FaseOrdine::where('ordine_id', $ordine->id)->where('stato', '!=', StatoFase::Chiusa->value)->count());

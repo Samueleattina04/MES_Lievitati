@@ -57,9 +57,14 @@ final class SplitTest extends TestCase
         $step = $base->steps()->firstOrFail();
         $this->workflow->avvia($step, $this->operatore);
         foreach ($base->materiali as $m) {
-            $this->workflow->confermaMateriale($m, (float) $m->quantita_pianificata, $this->operatore);
+            // I materiali con flag_lotto richiedono almeno un lotto (§6).
+            $lotti = $m->flag_lotto
+                ? [['lotto' => 'BASE-'.$m->id, 'quantita' => (float) $m->quantita_pianificata]]
+                : [];
+            $this->workflow->confermaMateriale($m, (float) $m->quantita_pianificata, $this->operatore, $lotti);
         }
-        $this->workflow->chiudiStep($step->fresh(), $this->operatore, 72.0);
+        // IMPASTOCOLOMBE e' un nodo prodotto: richiede il lotto in uscita alla chiusura.
+        $this->workflow->chiudiStep($step->fresh(), $this->operatore, 72.0, 'BASE-LOT-001');
 
         return $base->fresh();
     }

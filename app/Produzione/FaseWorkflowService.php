@@ -231,7 +231,10 @@ final class FaseWorkflowService
                 'operatore_id' => $operatore->id,
             ]);
 
-            $statiStep = $fase->steps()->pluck('stato')->map(fn ($s) => StatoFase::from($s))->all();
+            // pluck() su relazione Eloquent applica il cast: 'stato' puo' arrivare gia' come StatoFase.
+            $statiStep = $fase->steps()->pluck('stato')
+                ->map(fn ($s) => $s instanceof StatoFase ? $s : StatoFase::from($s))
+                ->all();
 
             if (FaseGate::tuttiStepChiusi($statiStep)) {
                 $qtaProdotta = $quantitaProdotta ?? (float) $fase->quantita_pianificata;
