@@ -1,12 +1,16 @@
 <script setup>
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { inSospeso, online } from '@/offline/sync';
+import { avvisoOffline, inSospeso, online } from '@/offline/sync';
 
 const page = usePage();
 const nome = computed(() => page.props.auth?.user?.name ?? 'Operatore');
 const flashSuccess = computed(() => page.props.flash?.success);
 const flashError = computed(() => page.props.flash?.error);
+
+function chiudiAvviso() {
+    avvisoOffline.value = '';
+}
 </script>
 
 <template>
@@ -44,6 +48,15 @@ const flashError = computed(() => page.props.flash?.error);
         </div>
         <div v-if="flashError" class="mx-4 mt-3 rounded-lg bg-red-600 px-4 py-3 text-lg font-semibold">
             {{ flashError }}
+        </div>
+        <!-- Avviso navigazione offline (§8): pagina non disponibile senza rete. -->
+        <div
+            v-if="avvisoOffline"
+            class="mx-4 mt-3 cursor-pointer rounded-lg bg-amber-600 px-4 py-3 text-lg font-semibold"
+            role="alert"
+            @click="chiudiAvviso"
+        >
+            🔌 {{ avvisoOffline }}
         </div>
 
         <main class="p-4">

@@ -12,6 +12,21 @@ import { aggiungi, conteggio, rimuovi, tutte } from './db';
 export const online = ref(typeof navigator !== 'undefined' ? navigator.onLine : true);
 export const inSospeso = ref(0);
 
+// Avviso mostrato quando una navigazione offline fallisce (pagina non in cache, §8).
+export const avvisoOffline = ref('');
+let avvisoTimer = null;
+
+/** Mostra un avviso di navigazione offline, auto-nascosto dopo qualche secondo. */
+export function segnalaOffline(messaggio) {
+    avvisoOffline.value = messaggio;
+    if (avvisoTimer) {
+        clearTimeout(avvisoTimer);
+    }
+    avvisoTimer = setTimeout(() => {
+        avvisoOffline.value = '';
+    }, 6000);
+}
+
 const POLL_MS = 30000;
 const SYNC_TAG = 'mes-sync';
 
