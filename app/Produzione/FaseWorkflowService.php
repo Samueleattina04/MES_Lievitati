@@ -14,6 +14,7 @@ use App\Models\FaseSplit;
 use App\Models\LottoProdotto;
 use App\Models\MaterialeFase;
 use App\Models\User;
+use App\Stock\Contracts\StockSourceAdapterInterface;
 use App\Support\LogEventi;
 use Illuminate\Support\Facades\DB;
 
@@ -26,6 +27,8 @@ final class FaseWorkflowService
 {
     public function __construct(
         private readonly float $tolleranzaMultilotto = 0.01,
+        private readonly ?StockSourceAdapterInterface $stock = null,
+        private readonly bool $verificaGiacenza = true,
     ) {}
 
     /**
@@ -161,6 +164,9 @@ final class FaseWorkflowService
             }
         }
 
+        // Verifica giacenza sul mag. 06 (§5.1). I lotti inseriti a mano NON attivano il blocco.
+        $this->controllaGiacenza($materiale, $quantitaEffettiva, $lotti);
+
         return DB::transaction(function () use ($materiale, $quantitaEffettiva, $operatore, $lotti, $clientUuid) {
             $consumo = ConsumoMateriale::updateOrCreate(
                 ['materiale_fase_id' => $materiale->id],
@@ -195,9 +201,69 @@ final class FaseWorkflowService
     }
 
     /**
+     * Blocco per giacenza insufficiente sul mag. 06 (§5.1):
+     *  - articolo NON a lotto: quantita' confermata <= giacenza articolo sul mag. 06;
+     *  - articolo a lotto: per ogni riga il cui lotto E' presente sul mag. 06, la quantita' assegnata
+     *    non puo' superare la giacenza di quel lotto. I lotti inseriti a mano (assenti dal mag. 06)
+     *    NON attivano il blocco.
+     *
+     * @param list<array{lotto:string, quantita:float|int|string}> $lotti
+     */
+    private function controllaGiacenza(MaterialeFase $materiale, float $quantitaEffettiva, array $lotti): void
+    {
+        if (! $this->verificaGiacenza || $this->stock === null) {
+            return;
+        }
+
+        // I semilavorati prodotti internamente non stanno sul mag. 06: la loro disponibilita' e'
+        // governata dalla fase produttrice (precedenze/split), non dalla giacenza di magazzino.
+        if ($materiale->e_semilavorato) {
+            return;
+        }
+
+        $codice = $materiale->articolo_codice;
+
+        if (! $materiale->flag_lotto) {
+            $disponibile = $this->stock->giacenzaArticolo($codice);
+            if ($quantitaEffettiva > $disponibile + 1e-9) {
+                throw new WorkflowException(sprintf(
+                    'Giacenza mag. 06 insufficiente per %s: richiesti %s, disponibili %s.',
+                    $codice, $this->fmt($quantitaEffettiva), $this->fmt($disponibile),
+                ));
+            }
+
+            return;
+        }
+
+        // Giacenza per lotto sul mag. 06 (aggregata per codice lotto).
+        $dispPerLotto = [];
+        foreach ($this->stock->lottiDisponibiliFifo($codice) as $l) {
+            $dispPerLotto[$l->lotto] = ($dispPerLotto[$l->lotto] ?? 0.0) + $l->quantita;
+        }
+
+        foreach ($lotti as $riga) {
+            $lotto = trim((string) $riga['lotto']);
+            $qta = (float) $riga['quantita'];
+            // Solo i lotti del mag. 06 sono soggetti al blocco; quelli manuali passano (§5.1).
+            if (array_key_exists($lotto, $dispPerLotto) && $qta > $dispPerLotto[$lotto] + 1e-9) {
+                throw new WorkflowException(sprintf(
+                    'Giacenza mag. 06 insufficiente per il lotto %s di %s: richiesti %s, disponibili %s.',
+                    $lotto, $codice, $this->fmt($qta), $this->fmt($dispPerLotto[$lotto]),
+                ));
+            }
+        }
+    }
+
+    private function fmt(float $valore): string
+    {
+        return rtrim(rtrim(number_format($valore, 6, '.', ''), '0'), '.');
+    }
+
+    /**
      * Chiude uno step. Se e' lo step che consuma i materiali, richiede che tutti i materiali siano
-     * stati confermati. Se tutti gli step della fase sono chiusi, chiude la fase (criterio 4) e,
-     * se tutte le fasi dell'ordine sono chiuse, marca l'ordine "completato".
+     * stati confermati (e i componenti a lotto abbiano almeno un lotto). Se tutti gli step della
+     * fase sono chiusi, chiude la fase (criterio 4) e, se tutte le fasi dell'ordine sono chiuse,
+     * marca l'ordine "completato".
      */
     public function chiudiStep(
         FaseOrdineStep $step,
@@ -217,11 +283,23 @@ final class FaseWorkflowService
             }
 
             if ($step->consuma_materiali) {
+                // Tutti i materiali devono essere confermati.
                 $mancanti = MaterialeFase::where('fase_ordine_id', $fase->id)
                     ->whereDoesntHave('consumo')
                     ->count();
                 if ($mancanti > 0) {
                     throw new WorkflowException("Confermare tutti i materiali prima di chiudere ({$mancanti} mancanti).");
+                }
+                // Lotto obbligatorio (§5.2, §8): i componenti a lotto devono avere almeno una riga lotto.
+                $senzaLotto = MaterialeFase::where('fase_ordine_id', $fase->id)
+                    ->where('flag_lotto', true)
+                    ->where(function ($q) {
+                        $q->whereDoesntHave('consumo')
+                            ->orWhereHas('consumo', fn ($c) => $c->whereDoesntHave('lotti'));
+                    })
+                    ->count();
+                if ($senzaLotto > 0) {
+                    throw new WorkflowException("Impossibile chiudere: {$senzaLotto} componente/i a lotto senza lotto valorizzato.");
                 }
             }
 

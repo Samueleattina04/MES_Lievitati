@@ -1,0 +1,19 @@
+{
+    "_nota": "Giacenze mag.06 di ESEMPIO per sviluppo/CI (FixtureStockAdapter). Un articolo non elencato ha giacenza illimitata di default (non blocca). rif_fifo = proxy provvisorio dell'ordine FIFO (RifLottoNum).",
+    "PT0LI25": { "giacenza": 45.0, "lotti": [
+        { "lotto": "FAR2024-11", "quantita": 18.7, "rif_fifo": 101 },
+        { "lotto": "FAR2024-12", "quantita": 26.3, "rif_fifo": 102 }
+    ] },
+    "BURRO-P": { "giacenza": 30.0, "lotti": [
+        { "lotto": "BUR-A", "quantita": 12.0, "rif_fifo": 55 },
+        { "lotto": "BUR-B", "quantita": 18.0, "rif_fifo": 56 }
+    ] },
+    "ZUCCHERO-SEM": { "giacenza": 200.0, "lotti": [
+        { "lotto": "ZUC-2401", "quantita": 200.0, "rif_fifo": 12 }
+    ] },
+    "MADRE492": { "giacenza": 8.0, "lotti": [
+        { "lotto": "MADRE-0007", "quantita": 8.0, "rif_fifo": 7 }
+    ] },
+    "BUSTA-PP": { "giacenza": 500.0, "lotti": [] },
+    "ACQUA": { "giacenza": 100000.0, "lotti": [] }
+}

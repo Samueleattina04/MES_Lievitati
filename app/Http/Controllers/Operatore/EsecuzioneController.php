@@ -11,6 +11,8 @@ use App\Models\FaseOrdineStep;
 use App\Models\MaterialeFase;
 use App\Produzione\FaseWorkflowService;
 use App\Produzione\WorkflowException;
+use App\Stock\Contracts\StockSourceAdapterInterface;
+use App\Stock\FifoAllocator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,12 +20,13 @@ use Inertia\Response;
 
 /**
  * Interfaccia operatore (§8): coda di lavoro del reparto e schermata di esecuzione dello step
- * (avvio -> conferma materiali -> chiusura). Flusso online; la PWA/offline arriva in Fase 6.
+ * (avvio -> conferma materiali -> chiusura), con verifica giacenza mag. 06 e proposta lotti FIFO (§5).
  */
 class EsecuzioneController extends Controller
 {
     public function __construct(
         private readonly FaseWorkflowService $workflow,
+        private readonly StockSourceAdapterInterface $stock,
     ) {}
 
     public function coda(Request $request): Response
@@ -125,21 +128,46 @@ class EsecuzioneController extends Controller
                     'stato' => $s->stato->value,
                 ])->values(),
             ],
-            'materiali' => $fase->materiali->map(fn (MaterialeFase $m) => [
-                'id' => $m->id,
-                'articolo' => $m->articolo_codice,
-                'descrizione' => $m->descrizione,
-                'quantita_pianificata' => $m->quantita_pianificata,
-                'udm' => $m->udm,
-                'flag_lotto' => $m->flag_lotto,
-                'semilavorato' => $m->e_semilavorato,
-                'confermato' => $m->consumo !== null,
-                'quantita_effettiva' => $m->consumo?->quantita_effettiva,
-                'lotti' => $m->consumo
-                    ? $m->consumo->lotti->map(fn ($l) => ['lotto' => $l->lotto, 'quantita' => $l->quantita])->values()
-                    : [],
-            ])->values(),
+            'materiali' => $fase->materiali->map(fn (MaterialeFase $m) => $this->materialePerUi($m))->values(),
         ]);
+    }
+
+    /**
+     * Prepara la riga materiale per la UI, arricchita con giacenza mag. 06 e proposta lotti FIFO (§5).
+     *
+     * @return array<string,mixed>
+     */
+    private function materialePerUi(MaterialeFase $m): array
+    {
+        // I semilavorati non sono verificati sul mag. 06 (§5): giacenza n/d, nessuna proposta lotti.
+        $verificaStock = ! $m->e_semilavorato;
+        $giacenza = $verificaStock ? $this->stock->giacenzaArticolo($m->articolo_codice) : null;
+
+        // Proposta FIFO pre-compilata per i materiali a lotto (raw). Se gia' confermato, mostra i lotti reali.
+        $proposta = [];
+        if ($verificaStock && $m->flag_lotto && $m->consumo === null) {
+            $proposta = FifoAllocator::proponi(
+                $this->stock->lottiDisponibiliFifo($m->articolo_codice),
+                (float) $m->quantita_pianificata,
+            );
+        }
+
+        return [
+            'id' => $m->id,
+            'articolo' => $m->articolo_codice,
+            'descrizione' => $m->descrizione,
+            'quantita_pianificata' => $m->quantita_pianificata,
+            'udm' => $m->udm,
+            'flag_lotto' => $m->flag_lotto,
+            'semilavorato' => $m->e_semilavorato,
+            'confermato' => $m->consumo !== null,
+            'quantita_effettiva' => $m->consumo?->quantita_effettiva,
+            'giacenza_mag06' => $giacenza,
+            'proposta_fifo' => $proposta,
+            'lotti' => $m->consumo
+                ? $m->consumo->lotti->map(fn ($l) => ['lotto' => $l->lotto, 'quantita' => $l->quantita])->values()
+                : [],
+        ];
     }
 
     public function avvia(Request $request, FaseOrdineStep $step): RedirectResponse

@@ -15,6 +15,9 @@ use App\Ordini\OrderExplosionPlanner;
 use App\Produzione\FaseWorkflowService;
 use App\Produzione\GenealogiaService;
 use App\Produzione\SplitService;
+use App\Stock\Contracts\StockSourceAdapterInterface;
+use App\Stock\FixtureStockAdapter;
+use App\Stock\SqlServerStockAdapter;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -50,9 +53,27 @@ class MesServiceProvider extends ServiceProvider
             fn () => new SplitService((float) config('mes.tolleranza_split', 0.01)),
         );
 
+        // Adapter giacenze mag. 06 (§5): reale ESOLVER o fixture (dev/test).
+        $this->app->singleton(StockSourceAdapterInterface::class, function (): StockSourceAdapterInterface {
+            $config = (array) config('mes.stock');
+            $driver = (string) ($config['adapter'] ?? 'sqlsrv');
+
+            return match ($driver) {
+                'sqlsrv' => new SqlServerStockAdapter(DB::connection('sqlsrv_gestionale'), $config),
+                'fixture' => FixtureStockAdapter::daFile((string) $config['fixture_path']),
+                default => throw new InvalidArgumentException(
+                    "Adapter giacenze non valido: '{$driver}'. Valori ammessi: 'sqlsrv', 'fixture'."
+                ),
+            };
+        });
+
         $this->app->bind(
             FaseWorkflowService::class,
-            fn () => new FaseWorkflowService((float) config('mes.tolleranza_multilotto', 0.01)),
+            fn (Application $app) => new FaseWorkflowService(
+                (float) config('mes.tolleranza_multilotto', 0.01),
+                $app->make(StockSourceAdapterInterface::class),
+                (bool) config('mes.stock.verifica_giacenza', true),
+            ),
         );
 
         // Motore di export a template (§10): registro dei tracciati disponibili.

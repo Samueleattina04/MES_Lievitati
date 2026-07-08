@@ -25,6 +25,46 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Magazzino 06: giacenze e proposta lotti FIFO (§3 GiacenzaMag06, §5, §8)
+    |--------------------------------------------------------------------------
+    |
+    | Sorgente giacenze/lotti dal gestionale ESOLVER (connessione sqlsrv_gestionale).
+    | Schema confermato: MagProgrArticoli (giacenza per articolo/magazzino) e
+    | MagProgrLotto (giacenza per lotto). La mappatura colonne e' qui, NON hardcoded,
+    | cosi' da adattarla senza toccare la logica.
+    */
+    'stock' => [
+        // 'sqlsrv' (gestionale reale) | 'fixture' (sviluppo/CI/test)
+        'adapter' => env('MES_STOCK_ADAPTER', 'sqlsrv'),
+
+        // Verifica giacenza alla conferma materiali; blocca se insufficiente (§5.1). Disattivabile.
+        'verifica_giacenza' => (bool) env('MES_STOCK_VERIFICA', true),
+
+        // Magazzino di riferimento: sempre '06' (stringa, non numerico).
+        'magazzino' => env('MES_STOCK_MAGAZZINO', '06'),
+
+        // Mappatura schema ESOLVER (confermata).
+        'tabella_articoli' => 'MagProgrArticoli',
+        'tabella_lotti' => 'MagProgrLotto',
+        'col_codice_articolo' => 'CodArt',
+        'col_magazzino' => 'CodMag',
+        'col_giacenza_articolo' => 'QtaGiacUmMag',
+        'col_lotto' => 'RifLottoAlfab',
+        'col_giacenza_lotto' => 'QtaGiacenzaUmMag',
+
+        // PROVVISORIO: ordinamento FIFO su RifLottoNum crescente. RifLottoData e' una sentinella
+        // (sempre 1800-01-01) e non e' usabile. Configurabile per sostituirlo quando il gestionale
+        // confermera' il campo cronologico corretto senza modifiche al codice.
+        // // PROVVISORIO: in attesa di conferma dal gestionale sul campo FIFO corretto.
+        'campo_fifo' => env('MES_STOCK_CAMPO_FIFO', 'RifLottoNum'),
+        'fifo_direzione' => env('MES_STOCK_FIFO_DIR', 'asc'), // asc = piu' vecchio prima
+
+        // Fixture giacenze per sviluppo/test (un unico JSON: { "CODART": {giacenza, lotti:[...]} }).
+        'fixture_path' => base_path('tests/fixtures/stock'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Tolleranze di validazione
     |--------------------------------------------------------------------------
     |

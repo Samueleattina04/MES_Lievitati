@@ -13,12 +13,21 @@ const props = defineProps({
 const quantita = reactive({});
 const lotti = reactive({});
 const confermatiLocali = reactive({});
+// Traccia quali righe lotto provengono dalla proposta FIFO (solo per informazione UI).
+const daProposta = reactive({});
 props.materiali.forEach((m) => {
     quantita[m.id] = m.quantita_effettiva ?? m.quantita_pianificata;
     if (m.flag_lotto) {
-        lotti[m.id] = m.lotti.length
-            ? m.lotti.map((l) => ({ lotto: l.lotto, quantita: l.quantita }))
-            : [{ lotto: '', quantita: m.quantita_pianificata }];
+        if (m.lotti.length) {
+            // Gia' confermato: mostra i lotti reali.
+            lotti[m.id] = m.lotti.map((l) => ({ lotto: l.lotto, quantita: l.quantita }));
+        } else if (m.proposta_fifo && m.proposta_fifo.length) {
+            // Proposta FIFO pre-compilata dal mag. 06 (§5.2): confermabile con un tap o modificabile.
+            lotti[m.id] = m.proposta_fifo.map((l) => ({ lotto: l.lotto, quantita: l.quantita }));
+            daProposta[m.id] = true;
+        } else {
+            lotti[m.id] = [{ lotto: '', quantita: m.quantita_pianificata }];
+        }
     }
 });
 
@@ -40,6 +49,14 @@ const puoChiudere = computed(
 const sommaLotti = (id) => (lotti[id] || []).reduce((acc, r) => acc + (parseFloat(r.quantita) || 0), 0);
 const aggiungiLotto = (id) => lotti[id].push({ lotto: '', quantita: 0 });
 const rimuoviLotto = (id, i) => lotti[id].splice(i, 1);
+
+// Avviso lato client per gli articoli NON a lotto: quantita > giacenza mag. 06 (il blocco vero e' server-side).
+const giacenzaInsufficiente = (m) =>
+    !m.flag_lotto
+    && !m.semilavorato
+    && m.giacenza_mag06 !== null
+    && m.giacenza_mag06 !== undefined
+    && (parseFloat(quantita[m.id]) || 0) > Number(m.giacenza_mag06) + 1e-9;
 
 // Gestisce l'esito di un'azione: online -> ricarica dal server; offline -> aggiorna in ottico + avvisa.
 async function esegui(tipo, payload, ottimistico, dopoOk) {
@@ -141,6 +158,9 @@ const chiudi = () =>
                                 <span v-if="m.semilavorato" class="ml-1 text-indigo-300">(semilavorato)</span>
                             </div>
                             <div class="text-sm text-slate-400">Previsto: {{ m.quantita_pianificata }} {{ m.udm }}</div>
+                            <div v-if="m.giacenza_mag06 !== null && m.giacenza_mag06 !== undefined" class="text-xs" :class="giacenzaInsufficiente(m) ? 'text-red-400 font-semibold' : 'text-slate-500'">
+                                Giac. mag.06: {{ m.giacenza_mag06 }} {{ m.udm }}
+                            </div>
                         </div>
                         <button
                             type="button"
@@ -152,12 +172,20 @@ const chiudi = () =>
                         </button>
                     </div>
 
-                    <div v-if="!m.flag_lotto" class="mt-2 flex items-center gap-2">
-                        <input v-model="quantita[m.id]" type="number" step="0.000001" min="0" class="w-36 rounded-lg border-0 bg-slate-900 px-3 py-3 text-right text-xl text-white" />
-                        <span class="text-slate-400">{{ m.udm }}</span>
+                    <div v-if="!m.flag_lotto" class="mt-2">
+                        <div class="flex items-center gap-2">
+                            <input v-model="quantita[m.id]" type="number" step="0.000001" min="0" class="w-36 rounded-lg border-0 bg-slate-900 px-3 py-3 text-right text-xl text-white" />
+                            <span class="text-slate-400">{{ m.udm }}</span>
+                        </div>
+                        <p v-if="giacenzaInsufficiente(m)" class="mt-1 text-sm font-semibold text-red-400">
+                            ⚠ Giacenza mag.06 insufficiente: la registrazione verra bloccata.
+                        </p>
                     </div>
 
                     <div v-else class="mt-3">
+                        <p v-if="daProposta[m.id]" class="mb-2 text-xs text-emerald-300">
+                            Proposta FIFO dal mag.06 — confermabile o modificabile.
+                        </p>
                         <div v-for="(riga, i) in lotti[m.id]" :key="i" class="mb-2 flex items-center gap-2">
                             <input v-model="riga.lotto" type="text" placeholder="Lotto" class="flex-1 rounded-lg border-0 bg-slate-900 px-3 py-3 text-lg text-white" />
                             <input v-model="riga.quantita" type="number" step="0.000001" min="0" class="w-28 rounded-lg border-0 bg-slate-900 px-3 py-3 text-right text-lg text-white" />

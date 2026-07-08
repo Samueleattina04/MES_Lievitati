@@ -30,6 +30,8 @@
         <env name="DB_URL" value=""/>
         <!-- In test la sorgente distinte e' sempre il FixtureBomAdapter (nessun gestionale). -->
         <env name="MES_BOM_ADAPTER" value="fixture"/>
+        <!-- Idem per le giacenze mag. 06: FixtureStockAdapter (i test bindano dati in memoria). -->
+        <env name="MES_STOCK_ADAPTER" value="fixture"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
