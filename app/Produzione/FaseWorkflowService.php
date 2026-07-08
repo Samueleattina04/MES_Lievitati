@@ -177,7 +177,7 @@ final class FaseWorkflowService
         // Verifica giacenza sul mag. 06 (§5.1). I lotti inseriti a mano NON attivano il blocco.
         $this->controllaGiacenza($materiale, $quantitaEffettiva, $lotti);
 
-        return DB::transaction(function () use ($materiale, $quantitaEffettiva, $operatore, $lotti, $clientUuid) {
+        return DB::transaction(function () use ($materiale, $quantitaEffettiva, $operatore, $lotti, $clientUuid, $precedente) {
             $consumo = ConsumoMateriale::updateOrCreate(
                 ['materiale_fase_id' => $materiale->id],
                 [
