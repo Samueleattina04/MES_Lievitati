@@ -110,6 +110,7 @@ class SyncController extends Controller
                 $operatore,
                 $payload['lotti'] ?? [],
                 $clientUuid,
+                (bool) ($payload['conferma_superamento'] ?? false),
             ),
             'chiusura_step' => $this->workflow->chiudiStep(
                 FaseOrdineStep::findOrFail($payload['step_id']),

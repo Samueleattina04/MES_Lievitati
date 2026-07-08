@@ -152,4 +152,39 @@ final class StockGiacenzaTest extends TestCase
                 }),
             );
     }
+
+    public function test_avviso_superamento_totale_su_lotto_manuale_logga_e_non_blocca(): void
+    {
+        // Giacenza totale nota = 2, nessun lotto sul mag.06: il lotto e' manuale.
+        $this->stock(['ZUCCHERO-SEM' => ['giacenza_totale' => 2.0, 'lotti' => []]], 0.0);
+        $zucchero = $this->materiale('ZUCCHERO-SEM');
+
+        // 10 > 2 con lotto manuale: NON blocca, ma registra l'evento (con conferma esplicita).
+        $consumo = $this->wf()->confermaMateriale($zucchero, 10.0, $this->op, [['lotto' => 'MAN-1', 'quantita' => 10.0]], null, true);
+
+        self::assertNotNull($consumo);
+        $log = \App\Models\LogEvento::where('tipo_evento', 'materiale_superamento_giacenza')->latest('id')->first();
+        self::assertNotNull($log);
+        self::assertTrue((bool) $log->dati['confermato_esplicitamente']);
+        self::assertEqualsWithDelta(2.0, (float) $log->dati['giacenza_totale_nota'], 1e-9);
+        self::assertContains('MAN-1', $log->dati['lotti_manuali']);
+    }
+
+    public function test_nessun_avviso_se_entro_la_giacenza_totale(): void
+    {
+        $this->stock(['ZUCCHERO-SEM' => ['giacenza_totale' => 100.0, 'lotti' => []]], 0.0);
+        $this->wf()->confermaMateriale($this->materiale('ZUCCHERO-SEM'), 10.0, $this->op, [['lotto' => 'MAN-1', 'quantita' => 10.0]], null, false);
+
+        self::assertSame(0, \App\Models\LogEvento::where('tipo_evento', 'materiale_superamento_giacenza')->count());
+    }
+
+    public function test_nessun_avviso_se_il_lotto_e_del_mag06(): void
+    {
+        // Lotto L1 presente sul mag.06 con giacenza ampia: NON e' manuale -> nessun avviso di superamento
+        // (i lotti del mag.06 seguono il blocco §5.1, non questo avviso), anche se la "giacenza_totale" e' bassa.
+        $this->stock(['ZUCCHERO-SEM' => ['giacenza_totale' => 2.0, 'lotti' => [['lotto' => 'L1', 'quantita' => 100.0, 'rif_fifo' => 1]]]], 0.0);
+        $this->wf()->confermaMateriale($this->materiale('ZUCCHERO-SEM'), 10.0, $this->op, [['lotto' => 'L1', 'quantita' => 10.0]], null, false);
+
+        self::assertSame(0, \App\Models\LogEvento::where('tipo_evento', 'materiale_superamento_giacenza')->count());
+    }
 }

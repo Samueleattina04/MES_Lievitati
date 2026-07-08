@@ -138,6 +138,7 @@ final class FaseWorkflowService
         User $operatore,
         array $lotti = [],
         ?string $clientUuid = null,
+        bool $confermaSuperamento = false,
     ): ConsumoMateriale {
         if ($quantitaEffettiva < 0) {
             throw new WorkflowException('La quantita consumata non puo essere negativa.');
@@ -177,7 +178,11 @@ final class FaseWorkflowService
         // Verifica giacenza sul mag. 06 (§5.1). I lotti inseriti a mano NON attivano il blocco.
         $this->controllaGiacenza($materiale, $quantitaEffettiva, $lotti);
 
-        return DB::transaction(function () use ($materiale, $quantitaEffettiva, $operatore, $lotti, $clientUuid, $precedente) {
+        // Avviso soft (non bloccante): lotto manuale con quantita' oltre la giacenza TOTALE nota.
+        // La conferma aggiuntiva e' gattata dal client; qui registriamo l'evento per tracciabilita'.
+        $superamento = $this->rilevaSuperamentoTotale($materiale, $quantitaEffettiva, $lotti);
+
+        return DB::transaction(function () use ($materiale, $quantitaEffettiva, $operatore, $lotti, $clientUuid, $precedente, $superamento, $confermaSuperamento) {
             $consumo = ConsumoMateriale::updateOrCreate(
                 ['materiale_fase_id' => $materiale->id],
                 [
@@ -214,6 +219,17 @@ final class FaseWorkflowService
                 'precedente' => $statoPrecedente,
                 'nuovo' => $nuovoStato,
             ]);
+
+            // Tracciabilita' dell'avviso di superamento giacenza totale su lotto manuale (non bloccante).
+            if ($superamento !== null) {
+                LogEventi::registra('materiale_superamento_giacenza', $materiale, $operatore->id, [
+                    'articolo' => $materiale->articolo_codice,
+                    'quantita' => $quantitaEffettiva,
+                    'giacenza_totale_nota' => $superamento['giacenza_totale'],
+                    'lotti_manuali' => $superamento['lotti_manuali'],
+                    'confermato_esplicitamente' => $confermaSuperamento,
+                ]);
+            }
 
             return $consumo;
         });
@@ -276,6 +292,44 @@ final class FaseWorkflowService
     private function fmt(float $valore): string
     {
         return rtrim(rtrim(number_format($valore, 6, '.', ''), '0'), '.');
+    }
+
+    /**
+     * Rileva il superamento della giacenza TOTALE nota (tutti i magazzini) quando sono coinvolti
+     * lotti INSERITI MANUALMENTE (non presenti sul mag. 06). NON blocca: restituisce i dati per il
+     * log/avviso, oppure null se la condizione non si applica.
+     *
+     * @param list<array{lotto:string, quantita:float|int|string}> $lotti
+     * @return array{giacenza_totale:float, lotti_manuali:list<string>}|null
+     */
+    private function rilevaSuperamentoTotale(MaterialeFase $materiale, float $quantitaEffettiva, array $lotti): ?array
+    {
+        if ($this->stock === null || ! $materiale->flag_lotto || $materiale->e_semilavorato) {
+            return null;
+        }
+
+        // Codici lotto presenti sul mag. 06: gli altri sono "manuali".
+        $mag06 = [];
+        foreach ($this->stock->lottiDisponibiliFifo($materiale->articolo_codice) as $l) {
+            $mag06[$l->lotto] = true;
+        }
+        $manuali = [];
+        foreach ($lotti as $riga) {
+            $lotto = trim((string) $riga['lotto']);
+            if ($lotto !== '' && ! isset($mag06[$lotto])) {
+                $manuali[] = $lotto;
+            }
+        }
+        if ($manuali === []) {
+            return null; // nessun lotto manuale: nessun avviso (i lotti del 06 seguono il blocco §5.1)
+        }
+
+        $totale = $this->stock->giacenzaTotale($materiale->articolo_codice);
+        if ($quantitaEffettiva <= $totale + 1e-9) {
+            return null; // entro la giacenza totale nota: nessun avviso
+        }
+
+        return ['giacenza_totale' => $totale, 'lotti_manuali' => array_values(array_unique($manuali))];
     }
 
     /**

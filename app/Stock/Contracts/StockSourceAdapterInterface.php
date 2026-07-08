@@ -18,6 +18,12 @@ interface StockSourceAdapterInterface
     public function giacenzaArticolo(string $codiceArticolo): float;
 
     /**
+     * Giacenza TOTALE nota dell'articolo su TUTTI i magazzini (somma di QtaGiacUmMag su ogni CodMag),
+     * NON filtrata sul 06. Usata per l'avviso soft (non bloccante) sui lotti inseriti manualmente.
+     */
+    public function giacenzaTotale(string $codiceArticolo): float;
+
+    /**
      * Lotti disponibili sul mag. 06 per l'articolo (giacenza > 0), ordinati in ottica FIFO (§5.2).
      *
      * @return list<\App\Stock\StockLotto>

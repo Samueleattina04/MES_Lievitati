@@ -40,6 +40,21 @@ final class SqlServerStockAdapter implements StockSourceAdapterInterface
         return (float) ($row->giacenza ?? 0);
     }
 
+    public function giacenzaTotale(string $codiceArticolo): float
+    {
+        $tab = $this->ident($this->config['tabella_articoli']);
+        $colCod = $this->ident($this->config['col_codice_articolo']);
+        $colGiac = $this->ident($this->config['col_giacenza_articolo']);
+
+        // Somma su TUTTI i magazzini: nessun filtro su CodMag.
+        $row = $this->connection->selectOne(
+            "SELECT SUM({$colGiac}) AS giacenza FROM {$tab} WITH (NOLOCK) WHERE {$colCod} = ?",
+            [$codiceArticolo],
+        );
+
+        return (float) ($row->giacenza ?? 0);
+    }
+
     public function lottiDisponibiliFifo(string $codiceArticolo): array
     {
         $tab = $this->ident($this->config['tabella_lotti']);

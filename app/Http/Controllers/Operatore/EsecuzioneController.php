@@ -143,13 +143,18 @@ class EsecuzioneController extends Controller
         $verificaStock = ! $m->e_semilavorato;
         $giacenza = $verificaStock ? $this->stock->giacenzaArticolo($m->articolo_codice) : null;
 
-        // Proposta FIFO pre-compilata per i materiali a lotto (raw). Se gia' confermato, mostra i lotti reali.
+        // Per i materiali a lotto (raw): lotti mag. 06 (per FIFO e per riconoscere i lotti manuali)
+        // e giacenza TOTALE nota (tutti i magazzini) per l'avviso soft sui lotti manuali.
         $proposta = [];
-        if ($verificaStock && $m->flag_lotto && $m->consumo === null) {
-            $proposta = FifoAllocator::proponi(
-                $this->stock->lottiDisponibiliFifo($m->articolo_codice),
-                (float) $m->quantita_pianificata,
-            );
+        $lottiMag06 = [];
+        $giacenzaTotale = null;
+        if ($verificaStock && $m->flag_lotto) {
+            $disponibili = $this->stock->lottiDisponibiliFifo($m->articolo_codice);
+            $lottiMag06 = array_values(array_unique(array_map(fn ($l) => $l->lotto, $disponibili)));
+            $giacenzaTotale = $this->stock->giacenzaTotale($m->articolo_codice);
+            if ($m->consumo === null) {
+                $proposta = FifoAllocator::proponi($disponibili, (float) $m->quantita_pianificata);
+            }
         }
 
         return [
@@ -163,6 +168,8 @@ class EsecuzioneController extends Controller
             'confermato' => $m->consumo !== null,
             'quantita_effettiva' => $m->consumo?->quantita_effettiva,
             'giacenza_mag06' => $giacenza,
+            'giacenza_totale' => $giacenzaTotale,
+            'lotti_mag06' => $lottiMag06,
             'proposta_fifo' => $proposta,
             'lotti' => $m->consumo
                 ? $m->consumo->lotti->map(fn ($l) => ['lotto' => $l->lotto, 'quantita' => $l->quantita])->values()
@@ -193,6 +200,8 @@ class EsecuzioneController extends Controller
             'lotti' => ['array'],
             'lotti.*.lotto' => ['nullable', 'string', 'max:100'],
             'lotti.*.quantita' => ['nullable', 'numeric', 'min:0'],
+            // Conferma esplicita del superamento giacenza totale su lotto manuale (avviso non bloccante).
+            'conferma_superamento' => ['boolean'],
         ]);
 
         try {
@@ -201,6 +210,8 @@ class EsecuzioneController extends Controller
                 (float) $dati['quantita_effettiva'],
                 $request->user(),
                 $dati['lotti'] ?? [],
+                null,
+                (bool) ($dati['conferma_superamento'] ?? false),
             );
         } catch (WorkflowException $e) {
             return back()->with('error', $e->getMessage());

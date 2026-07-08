@@ -74,10 +74,41 @@ async function esegui(tipo, payload, ottimistico, dopoOk) {
 
 const avvia = () => esegui('avvio_step', { step_id: props.step.id }, () => (statoLocale.value = 'in_corso'));
 
+// Un lotto e' "manuale" se il suo codice non e' tra quelli disponibili sul mag. 06.
+const haLottoManuale = (m) =>
+    (lotti[m.id] || []).some((r) => r.lotto && r.lotto.trim() !== '' && !(m.lotti_mag06 || []).includes(r.lotto.trim()));
+
 const conferma = (m) => {
+    let confermaSuperamento = false;
+
+    if (m.flag_lotto) {
+        const totale = sommaLotti(m.id);
+        const superaTotaleNoto =
+            m.giacenza_totale !== null && m.giacenza_totale !== undefined && totale > Number(m.giacenza_totale) + 1e-9;
+
+        // Avviso soft (§ lotti manuali): quantita' oltre la giacenza TOTALE nota + presenza di lotto manuale.
+        // Non blocca, ma richiede una seconda conferma esplicita; l'evento viene registrato lato server.
+        if (haLottoManuale(m) && superaTotaleNoto) {
+            const ok = window.confirm(
+                'Attenzione: la quantità inserita supera la giacenza totale nota nel gestionale per questo articolo. Confermi comunque?',
+            );
+            if (!ok) {
+                return; // annullato: nessuna registrazione
+            }
+            confermaSuperamento = true;
+        }
+    }
+
     const payload = m.flag_lotto
-        ? { step_id: props.step.id, materiale_id: m.id, quantita_effettiva: sommaLotti(m.id), lotti: lotti[m.id] }
+        ? {
+              step_id: props.step.id,
+              materiale_id: m.id,
+              quantita_effettiva: sommaLotti(m.id),
+              lotti: lotti[m.id],
+              conferma_superamento: confermaSuperamento,
+          }
         : { step_id: props.step.id, materiale_id: m.id, quantita_effettiva: quantita[m.id], lotti: [] };
+
     return esegui('conferma_materiale', payload, () => (confermatiLocali[m.id] = true));
 };
 

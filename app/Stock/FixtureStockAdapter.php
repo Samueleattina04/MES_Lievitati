@@ -44,6 +44,16 @@ final class FixtureStockAdapter implements StockSourceAdapterInterface
         return $this->giacenzaDefault ?? self::ILLIMITATA;
     }
 
+    public function giacenzaTotale(string $codiceArticolo): float
+    {
+        // Se il fixture non specifica il totale su tutti i magazzini, ripiega sulla giacenza nota.
+        if (isset($this->dati[$codiceArticolo]['giacenza_totale'])) {
+            return (float) $this->dati[$codiceArticolo]['giacenza_totale'];
+        }
+
+        return $this->giacenzaArticolo($codiceArticolo);
+    }
+
     public function lottiDisponibiliFifo(string $codiceArticolo): array
     {
         $lotti = $this->dati[$codiceArticolo]['lotti'] ?? [];
