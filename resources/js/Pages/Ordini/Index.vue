@@ -1,14 +1,23 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 
 defineProps({
     ordini: { type: Object, required: true },
 });
 
-const ruolo = computed(() => usePage().props.auth.ruolo);
-const puoCreare = computed(() => ['pianificazione', 'admin'].includes(ruolo.value));
+const puoCreare = computed(() => usePage().props.auth.can?.gestireOrdini === true);
+
+// Cancellazione consentita solo se l'ordine e' ancora "aperto" (nessuna fase avviata).
+function cancella(o) {
+    if (o.stato !== 'aperto') {
+        return;
+    }
+    if (confirm(`Cancellare l'ordine ${o.numero}? L'operazione e' irreversibile.`)) {
+        router.delete(route('ordini.destroy', o.id), { preserveScroll: true });
+    }
+}
 
 const statoColore = {
     aperto: 'bg-gray-100 text-gray-700',
@@ -49,6 +58,7 @@ const statoColore = {
                                 <th class="px-4 py-3">Data</th>
                                 <th class="px-4 py-3">Avanzamento</th>
                                 <th class="px-4 py-3">Stato</th>
+                                <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
@@ -70,9 +80,19 @@ const statoColore = {
                                         {{ o.stato_label }}
                                     </span>
                                 </td>
+                                <td class="px-4 py-3 text-right">
+                                    <button
+                                        v-if="puoCreare && o.stato === 'aperto'"
+                                        type="button"
+                                        class="text-red-600 hover:underline"
+                                        @click="cancella(o)"
+                                    >
+                                        Cancella
+                                    </button>
+                                </td>
                             </tr>
                             <tr v-if="ordini.data.length === 0">
-                                <td colspan="6" class="px-4 py-10 text-center text-gray-500">
+                                <td colspan="7" class="px-4 py-10 text-center text-gray-500">
                                     Nessun ordine. <Link v-if="puoCreare" :href="route('ordini.create')" class="text-indigo-600 hover:underline">Crea il primo ordine</Link>.
                                 </td>
                             </tr>

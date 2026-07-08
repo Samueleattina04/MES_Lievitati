@@ -165,10 +165,10 @@ const chiudi = () =>
                         <button
                             type="button"
                             class="rounded-lg px-4 py-3 text-lg font-semibold"
-                            :class="confermato(m) ? 'bg-emerald-700' : 'bg-indigo-600 active:bg-indigo-500'"
+                            :class="confermato(m) ? 'bg-emerald-700 active:bg-emerald-600' : 'bg-indigo-600 active:bg-indigo-500'"
                             @click="conferma(m)"
                         >
-                            {{ confermato(m) ? '✓ Confermato' : 'Conferma' }}
+                            {{ confermato(m) ? '✓ Confermato · Aggiorna' : 'Conferma' }}
                         </button>
                     </div>
 

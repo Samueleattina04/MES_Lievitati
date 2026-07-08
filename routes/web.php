@@ -22,9 +22,8 @@ Route::get('/', function () {
         return redirect()->route('login');
     }
 
-    return $user->eOperatore()
-        ? redirect()->route('operatore.coda')
-        : redirect()->route('dashboard');
+    // Home in base al ruolo (§7): operatore -> coda, admin -> configurazione, altri -> dashboard.
+    return redirect()->route($user->ruolo->rottaHome());
 });
 
 /*
@@ -60,42 +59,42 @@ Route::middleware(['auth', 'ruolo:operatore'])
 | Area backoffice/pianificazione/admin (email + password).
 */
 Route::middleware('auth')->group(function () {
+    // Dashboard (§9): admin, backoffice, pianificazione.
     Route::get('/dashboard', [DashboardController::class, 'index'])
-        ->middleware('ruolo:backoffice,pianificazione,admin')
+        ->middleware('can:vedere-dashboard')
         ->name('dashboard');
 
-    // Genealogia lotti (§6): backoffice + pianificazione.
+    // Genealogia lotti (§6).
     Route::get('/genealogia', [GenealogiaController::class, 'index'])
-        ->middleware('ruolo:backoffice,pianificazione,admin')
+        ->middleware('can:vedere-genealogia')
         ->name('genealogia.index');
 
-    // Export tracciati (§10): backoffice di produzione (+ admin). Marca l'ordine "esportato".
+    // Export tracciati (§10): SOLO chi ha il permesso 'esportare' (backoffice + admin, NON pianificazione).
     Route::post('/export/{ordine}', [EsportazioneController::class, 'esporta'])
-        ->middleware('ruolo:backoffice,admin')
+        ->middleware('can:esportare')
         ->name('export.esporta');
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    // Ordini di produzione (§9). Rotte statiche prima di /ordini/{ordine}.
-    Route::middleware('ruolo:pianificazione,admin,backoffice')->group(function () {
+    // Ordini di produzione (§9): SOLO chi puo' gestire ordini (pianificazione + admin, NON backoffice).
+    // Rotte statiche prima di /ordini/{ordine} per non farle catturare dal binding.
+    Route::middleware('can:gestire-ordini')->group(function () {
         Route::get('/ordini', [OrdineController::class, 'index'])->name('ordini.index');
         Route::get('/ordini/ricerca-articoli', [OrdineController::class, 'cercaArticoli'])->name('ordini.cerca-articoli');
-    });
-    Route::middleware('ruolo:pianificazione,admin')->group(function () {
         Route::get('/ordini/nuovo', [OrdineController::class, 'create'])->name('ordini.create');
         Route::post('/ordini', [OrdineController::class, 'store'])->name('ordini.store');
-    });
-    Route::middleware('ruolo:pianificazione,admin,backoffice')->group(function () {
         Route::get('/ordini/{ordine}', [OrdineController::class, 'show'])->name('ordini.show');
+        // Cancellazione ordine (solo se "aperto", nessuna fase avviata — vedi controller).
+        Route::delete('/ordini/{ordine}', [OrdineController::class, 'destroy'])->name('ordini.destroy');
     });
 });
 
 /*
-| Amministrazione (§7): solo ruolo Admin. CRUD reparti, tipi fase, mappatura articoli, utenti.
+| Amministrazione (§7): permesso 'configurare' (solo Admin). CRUD reparti, tipi fase, articoli, utenti.
 */
-Route::middleware(['auth', 'ruolo:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'can:configurare'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [AdminHomeController::class, 'index'])->name('index');
 
     Route::get('reparti', [RepartoController::class, 'index'])->name('reparti.index');

@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Bom\Contracts\BomSourceAdapterInterface;
+use App\Enums\StatoFase;
+use App\Enums\StatoOrdine;
 use App\Http\Requests\StoreOrdineRequest;
 use App\Models\FaseOrdine;
 use App\Models\OrdineProduzione;
 use App\Ordini\OrdineProduzioneService;
+use App\Support\LogEventi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
@@ -68,6 +72,34 @@ class OrdineController extends Controller
         return redirect()
             ->route('ordini.show', $ordine)
             ->with('success', "Ordine {$ordine->numero} creato: generate {$ordine->fasi()->count()} fasi.");
+    }
+
+    /**
+     * Cancella un ordine (admin + pianificazione, via 'can:gestire-ordini'). Consentito SOLO se
+     * l'ordine e' ancora "aperto" e nessuna fase e' stata avviata: se anche una sola fase risulta
+     * avviata/chiusa la cancellazione e' impedita, per non intaccare dati di produzione gia' registrati.
+     */
+    public function destroy(Request $request, OrdineProduzione $ordine): RedirectResponse
+    {
+        $faseAvviata = $ordine->fasi()->where('stato', '!=', StatoFase::DaLavorare->value)->exists();
+
+        if ($ordine->stato !== StatoOrdine::Aperto || $faseAvviata) {
+            return back()->with('error', 'Ordine non cancellabile: risulta avviato o non piu in stato "aperto".');
+        }
+
+        $numero = $ordine->numero;
+
+        DB::transaction(function () use ($ordine, $numero, $request) {
+            // Log prima della cancellazione (dopo il delete il soggetto non esisterebbe piu').
+            LogEventi::registra('ordine_cancellato', $ordine, $request->user()->id, [
+                'numero' => $numero,
+                'articolo' => $ordine->articolo_finito_codice,
+            ]);
+            // Cascade su distinta_righe, fasi_ordine (e discendenti) via foreign key.
+            $ordine->delete();
+        });
+
+        return redirect()->route('ordini.index')->with('success', "Ordine {$numero} cancellato.");
     }
 
     public function show(OrdineProduzione $ordine): Response

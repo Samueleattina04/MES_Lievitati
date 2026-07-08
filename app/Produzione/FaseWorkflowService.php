@@ -143,6 +143,16 @@ final class FaseWorkflowService
             throw new WorkflowException('La quantita consumata non puo essere negativa.');
         }
 
+        // Immutabilita' dopo la chiusura (audit): i consumi di una fase chiusa non si modificano.
+        // Finche' la fase e' aperta, invece, la riga gia' confermata puo' essere corretta.
+        $fase = $materiale->fase()->first();
+        if ($fase !== null && $fase->stato === StatoFase::Chiusa) {
+            throw new WorkflowException('Fase chiusa: i materiali non sono piu modificabili.');
+        }
+
+        // Valori precedenti (per il log prima/dopo in caso di correzione).
+        $precedente = $materiale->consumo()->with('lotti')->first();
+
         // Normalizza: scarta righe senza codice lotto.
         $lotti = array_values(array_filter(
             $lotti,
@@ -187,13 +197,22 @@ final class FaseWorkflowService
                 ]);
             }
 
-            $modificato = abs((float) $materiale->quantita_pianificata - $quantitaEffettiva) > 1e-9;
-            LogEventi::registra('materiale_confermato', $materiale, $operatore->id, [
+            $eCorrezione = $precedente !== null;
+            $nuovoStato = [
+                'quantita' => $quantitaEffettiva,
+                'lotti' => array_map(fn ($l) => ['lotto' => trim((string) $l['lotto']), 'quantita' => (float) $l['quantita']], $lotti),
+            ];
+            $statoPrecedente = $eCorrezione ? [
+                'quantita' => (float) $precedente->quantita_effettiva,
+                'lotti' => $precedente->lotti->map(fn ($l) => ['lotto' => $l->lotto, 'quantita' => (float) $l->quantita])->all(),
+            ] : null;
+
+            // Log distinto per la correzione (valore precedente/nuovo), coerente con l'audit trail (§11).
+            LogEventi::registra($eCorrezione ? 'materiale_modificato' : 'materiale_confermato', $materiale, $operatore->id, [
                 'articolo' => $materiale->articolo_codice,
                 'pianificata' => (float) $materiale->quantita_pianificata,
-                'effettiva' => $quantitaEffettiva,
-                'modificata' => $modificato,
-                'lotti' => array_map(fn ($l) => ['lotto' => trim((string) $l['lotto']), 'quantita' => (float) $l['quantita']], $lotti),
+                'precedente' => $statoPrecedente,
+                'nuovo' => $nuovoStato,
             ]);
 
             return $consumo;

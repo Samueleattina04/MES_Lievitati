@@ -37,6 +37,9 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
                 // Ruolo esposto al frontend per il rendering condizionale delle sezioni (§7).
                 'ruolo' => $user?->ruolo?->value,
+                // Permessi (matrice ruolo): la UI mostra solo le sezioni consentite. La sicurezza
+                // reale e' comunque lato server (Gate/middleware 'can:*').
+                'can' => $user?->ruolo?->permessi() ?? [],
             ],
             // Messaggi flash per i toast/notifiche lato Inertia.
             'flash' => [

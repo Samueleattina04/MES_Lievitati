@@ -12,8 +12,7 @@ defineProps({
 });
 
 const csrf = computed(() => usePage().props.csrf_token);
-const ruolo = computed(() => usePage().props.auth.ruolo);
-const puoEsportare = computed(() => ['backoffice', 'admin'].includes(ruolo.value));
+const puoEsportare = computed(() => usePage().props.auth.can?.esportare === true);
 const flashError = computed(() => usePage().props.flash?.error);
 </script>
 

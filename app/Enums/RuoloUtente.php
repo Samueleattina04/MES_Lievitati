@@ -29,4 +29,73 @@ enum RuoloUtente: string
     {
         return $this === self::Operatore;
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Matrice dei permessi (§7) — unica fonte di verita' usata da Gate, rotte e UI
+    |--------------------------------------------------------------------------
+    |
+    | Admin        : configurazione (reparti/fasi/articoli/utenti) ESCLUSIVA; super-utente,
+    |                puo' anche gestire ordini/esportare/vedere dashboard (vedi cancellazione ordine).
+    | Backoffice   : dashboard (sola lettura) + export. NON configurazione, NON gestione ordini.
+    | Pianificazione: gestione ordini + dashboard. NON configurazione, NON export.
+    | Operatore    : nessuna sezione backoffice (usa l'area /operatore con PIN).
+    */
+
+    /** Configurazione admin: reparti, tipi fase, mappatura articoli, utenti (esclusiva Admin). */
+    public function puoConfigurare(): bool
+    {
+        return $this === self::Admin;
+    }
+
+    /** Creare/gestire/cancellare ordini di produzione. */
+    public function puoGestireOrdini(): bool
+    {
+        return in_array($this, [self::Admin, self::Pianificazione], true);
+    }
+
+    /** Esportare i tracciati (pulsante export). */
+    public function puoEsportare(): bool
+    {
+        return in_array($this, [self::Admin, self::Backoffice], true);
+    }
+
+    /** Vedere la dashboard di produzione. */
+    public function vedeDashboard(): bool
+    {
+        return in_array($this, [self::Admin, self::Backoffice, self::Pianificazione], true);
+    }
+
+    /** Consultare la genealogia lotti (traceability/richiami). */
+    public function vedeGenealogia(): bool
+    {
+        return $this->vedeDashboard();
+    }
+
+    /** Rotta "home" dopo il login, in base al ruolo. */
+    public function rottaHome(): string
+    {
+        return match ($this) {
+            self::Operatore => 'operatore.coda',
+            self::Admin => 'admin.index',
+            default => 'dashboard',
+        };
+    }
+
+    /**
+     * Permessi in forma serializzabile per il frontend (Inertia shared props).
+     *
+     * @return array<string,bool>
+     */
+    public function permessi(): array
+    {
+        return [
+            'configurare' => $this->puoConfigurare(),
+            'gestireOrdini' => $this->puoGestireOrdini(),
+            'esportare' => $this->puoEsportare(),
+            'vedereDashboard' => $this->vedeDashboard(),
+            'vedereGenealogia' => $this->vedeGenealogia(),
+        ];
+    }
 }
+

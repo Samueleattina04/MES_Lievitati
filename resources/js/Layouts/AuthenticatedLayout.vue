@@ -8,7 +8,8 @@ import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
 import { Link, usePage } from '@inertiajs/vue3';
 
 const showingNavigationDropdown = ref(false);
-const isAdmin = computed(() => usePage().props.auth?.ruolo === 'admin');
+// Permessi del ruolo: la nav mostra solo le sezioni consentite (§7).
+const can = computed(() => usePage().props.auth?.can ?? {});
 </script>
 
 <template>
@@ -35,25 +36,28 @@ const isAdmin = computed(() => usePage().props.auth?.ruolo === 'admin');
                                 class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex"
                             >
                                 <NavLink
+                                    v-if="can.vedereDashboard"
                                     :href="route('dashboard')"
                                     :active="route().current('dashboard')"
                                 >
                                     Dashboard
                                 </NavLink>
                                 <NavLink
+                                    v-if="can.gestireOrdini"
                                     :href="route('ordini.index')"
                                     :active="route().current('ordini.*')"
                                 >
                                     Ordini
                                 </NavLink>
                                 <NavLink
+                                    v-if="can.vedereGenealogia"
                                     :href="route('genealogia.index')"
                                     :active="route().current('genealogia.*')"
                                 >
                                     Genealogia
                                 </NavLink>
                                 <NavLink
-                                    v-if="isAdmin"
+                                    v-if="can.configurare"
                                     :href="route('admin.index')"
                                     :active="route().current('admin.*')"
                                 >
@@ -161,25 +165,28 @@ const isAdmin = computed(() => usePage().props.auth?.ruolo === 'admin');
                 >
                     <div class="space-y-1 pb-3 pt-2">
                         <ResponsiveNavLink
+                            v-if="can.vedereDashboard"
                             :href="route('dashboard')"
                             :active="route().current('dashboard')"
                         >
                             Dashboard
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
+                            v-if="can.gestireOrdini"
                             :href="route('ordini.index')"
                             :active="route().current('ordini.*')"
                         >
                             Ordini
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
+                            v-if="can.vedereGenealogia"
                             :href="route('genealogia.index')"
                             :active="route().current('genealogia.*')"
                         >
                             Genealogia
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
-                            v-if="isAdmin"
+                            v-if="can.configurare"
                             :href="route('admin.index')"
                             :active="route().current('admin.*')"
                         >

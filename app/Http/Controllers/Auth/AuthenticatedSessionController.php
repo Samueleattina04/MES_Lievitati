@@ -33,7 +33,9 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        // Home in base al ruolo (§7): admin -> configurazione, backoffice/pianificazione -> dashboard.
+        // (Gli operatori usano il login PIN, non questa rotta.)
+        return redirect()->intended(route($request->user()->ruolo->rottaHome(), absolute: false));
     }
 
     /**

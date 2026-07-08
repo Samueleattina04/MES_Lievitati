@@ -15,11 +15,13 @@ use App\Ordini\OrderExplosionPlanner;
 use App\Produzione\FaseWorkflowService;
 use App\Produzione\GenealogiaService;
 use App\Produzione\SplitService;
+use App\Models\User;
 use App\Stock\Contracts\StockSourceAdapterInterface;
 use App\Stock\FixtureStockAdapter;
 use App\Stock\SqlServerStockAdapter;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 
@@ -89,6 +91,12 @@ class MesServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        // Gate derivati dalla matrice permessi del ruolo (unica fonte: App\Enums\RuoloUtente).
+        // Usati come middleware 'can:...' sulle rotte e via $page.props.auth.can nella UI (§7).
+        Gate::define('configurare', fn (User $u) => (bool) $u->ruolo?->puoConfigurare());
+        Gate::define('gestire-ordini', fn (User $u) => (bool) $u->ruolo?->puoGestireOrdini());
+        Gate::define('esportare', fn (User $u) => (bool) $u->ruolo?->puoEsportare());
+        Gate::define('vedere-dashboard', fn (User $u) => (bool) $u->ruolo?->vedeDashboard());
+        Gate::define('vedere-genealogia', fn (User $u) => (bool) $u->ruolo?->vedeGenealogia());
     }
 }
