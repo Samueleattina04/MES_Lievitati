@@ -56,13 +56,23 @@ async function registraBackgroundSync() {
         log('Background Sync non supportato dal browser: uso fallback online/focus/polling.');
         return false;
     }
+    // Diagnostica: stato del permesso 'background-sync' (per distinguere ambiente/policy/certificato).
+    try {
+        if (navigator.permissions?.query) {
+            const stato = await navigator.permissions.query({ name: 'background-sync' });
+            log('permesso background-sync:', stato.state);
+        }
+    } catch {
+        // Alcuni browser non espongono questo nome di permesso: ignoriamo.
+    }
+
     try {
         const reg = await navigator.serviceWorker.ready;
         await reg.sync.register(SYNC_TAG);
         log('Background Sync registrato (tag:', SYNC_TAG + ').');
         return true;
     } catch (e) {
-        log('Registrazione Background Sync FALLITA:', e?.message || e);
+        log('Registrazione Background Sync FALLITA:', e?.message || e, '— si usano i fallback (online/focus/polling).');
         return false;
     }
 }
