@@ -8,13 +8,21 @@ defineProps({
 });
 
 const puoCreare = computed(() => usePage().props.auth.can?.gestireOrdini === true);
+const isAdmin = computed(() => usePage().props.auth.ruolo === 'admin');
 
-// Cancellazione consentita solo se l'ordine e' ancora "aperto" (nessuna fase avviata).
+// Cancellabile: sempre gli "aperti"; l'admin puo' cancellare anche gli "in lavorazione".
+function cancellabile(o) {
+    return o.stato === 'aperto' || (isAdmin.value && o.stato === 'in_lavorazione');
+}
+
 function cancella(o) {
-    if (o.stato !== 'aperto') {
+    if (!cancellabile(o)) {
         return;
     }
-    if (confirm(`Cancellare l'ordine ${o.numero}? L'operazione e' irreversibile.`)) {
+    const messaggio = o.stato === 'in_lavorazione'
+        ? `L'ordine ${o.numero} è IN LAVORAZIONE: verranno eliminati anche i dati di avanzamento già registrati (consumi, lotti, split). Confermare la cancellazione?`
+        : `Cancellare l'ordine ${o.numero}? L'operazione è irreversibile.`;
+    if (confirm(messaggio)) {
         router.delete(route('ordini.destroy', o.id), { preserveScroll: true });
     }
 }
@@ -82,7 +90,7 @@ const statoColore = {
                                 </td>
                                 <td class="px-4 py-3 text-right">
                                     <button
-                                        v-if="puoCreare && o.stato === 'aperto'"
+                                        v-if="puoCreare && cancellabile(o)"
                                         type="button"
                                         class="text-red-600 hover:underline"
                                         @click="cancella(o)"

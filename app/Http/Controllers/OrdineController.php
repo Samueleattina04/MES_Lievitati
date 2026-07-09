@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Bom\Contracts\BomSourceAdapterInterface;
-use App\Enums\StatoFase;
 use App\Enums\StatoOrdine;
 use App\Http\Requests\StoreOrdineRequest;
 use App\Models\FaseOrdine;
@@ -75,27 +74,39 @@ class OrdineController extends Controller
     }
 
     /**
-     * Cancella un ordine (admin + pianificazione, via 'can:gestire-ordini'). Consentito SOLO se
-     * l'ordine e' ancora "aperto" e nessuna fase e' stata avviata: se anche una sola fase risulta
-     * avviata/chiusa la cancellazione e' impedita, per non intaccare dati di produzione gia' registrati.
+     * Cancella un ordine (admin + pianificazione, via 'can:gestire-ordini'). Stati consentiti per ruolo:
+     *  - Pianificazione: solo "aperto" (nessuna fase avviata);
+     *  - Admin: anche "in lavorazione" (override privilegiato: elimina anche i dati di avanzamento gia'
+     *    registrati, in cascade).
+     * "Completato" ed "esportato" restano NON cancellabili per chiunque (l'esportato e' gia' stato
+     * inviato al gestionale: cancellarlo creerebbe inconsistenze).
      */
     public function destroy(Request $request, OrdineProduzione $ordine): RedirectResponse
     {
-        $faseAvviata = $ordine->fasi()->where('stato', '!=', StatoFase::DaLavorare->value)->exists();
+        $eAdmin = $request->user()->eAdmin();
+        $statiConsentiti = $eAdmin
+            ? [StatoOrdine::Aperto, StatoOrdine::InLavorazione]
+            : [StatoOrdine::Aperto];
 
-        if ($ordine->stato !== StatoOrdine::Aperto || $faseAvviata) {
-            return back()->with('error', 'Ordine non cancellabile: risulta avviato o non piu in stato "aperto".');
+        if (! in_array($ordine->stato, $statiConsentiti, true)) {
+            return back()->with('error', sprintf(
+                'Ordine %s non cancellabile in stato "%s".',
+                $ordine->numero,
+                $ordine->stato->label(),
+            ));
         }
 
         $numero = $ordine->numero;
+        $statoPrecedente = $ordine->stato->value;
 
-        DB::transaction(function () use ($ordine, $numero, $request) {
+        DB::transaction(function () use ($ordine, $numero, $statoPrecedente, $request) {
             // Log prima della cancellazione (dopo il delete il soggetto non esisterebbe piu').
             LogEventi::registra('ordine_cancellato', $ordine, $request->user()->id, [
                 'numero' => $numero,
                 'articolo' => $ordine->articolo_finito_codice,
+                'stato' => $statoPrecedente, // traccia se era "in lavorazione" (override admin)
             ]);
-            // Cascade su distinta_righe, fasi_ordine (e discendenti) via foreign key.
+            // Cascade su distinta_righe, fasi_ordine e discendenti (consumi/lotti/split/step) via foreign key.
             $ordine->delete();
         });
 

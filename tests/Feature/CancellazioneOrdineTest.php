@@ -60,21 +60,49 @@ final class CancellazioneOrdineTest extends TestCase
         $this->assertModelMissing($ordine);
     }
 
-    public function test_non_cancellabile_se_una_fase_e_avviata(): void
+    private function avviaUnaFase(OrdineProduzione $ordine): void
     {
-        $ordine = $this->ordine();
         $step = FaseOrdine::where('ordine_id', $ordine->id)
             ->where('articolo_prodotto_codice', 'IMPASTOCOLOMBE/PANETTONI')
             ->firstOrFail()->steps()->firstOrFail();
-
-        // Avvia una fase: l'ordine passa "in lavorazione".
         app(FaseWorkflowService::class)->avvia($step, $this->u(RuoloUtente::Operatore));
+    }
+
+    public function test_pianificazione_non_cancella_ordine_in_lavorazione(): void
+    {
+        $ordine = $this->ordine();
+        $this->avviaUnaFase($ordine); // ordine -> in lavorazione
 
         $this->actingAs($this->u(RuoloUtente::Pianificazione))
             ->delete(route('ordini.destroy', $ordine))
             ->assertRedirect(); // torna indietro con errore
 
         $this->assertDatabaseHas('ordini_produzione', ['id' => $ordine->id]); // NON cancellato
+    }
+
+    public function test_admin_cancella_anche_ordine_in_lavorazione(): void
+    {
+        $ordine = $this->ordine();
+        $this->avviaUnaFase($ordine); // ordine -> in lavorazione
+
+        $this->actingAs($this->u(RuoloUtente::Admin))
+            ->delete(route('ordini.destroy', $ordine))
+            ->assertRedirect(route('ordini.index'));
+
+        $this->assertDatabaseMissing('ordini_produzione', ['id' => $ordine->id]);
+        $this->assertDatabaseMissing('fasi_ordine', ['ordine_id' => $ordine->id]); // cascade
+    }
+
+    public function test_admin_non_cancella_ordine_esportato(): void
+    {
+        $ordine = $this->ordine();
+        $ordine->update(['stato' => \App\Enums\StatoOrdine::Esportato]);
+
+        $this->actingAs($this->u(RuoloUtente::Admin))
+            ->delete(route('ordini.destroy', $ordine))
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('ordini_produzione', ['id' => $ordine->id]); // protetto
     }
 
     public function test_backoffice_non_puo_cancellare(): void
