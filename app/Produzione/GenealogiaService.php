@@ -109,6 +109,13 @@ final class GenealogiaService
                     ->with('fase')
                     ->first()?->fase;
 
+                // Se il lotto consumato non corrisponde a un lotto prodotto noto (es. lotto
+                // digitato a mano diverso dal lotto in uscita), risali comunque alla fase
+                // produttrice di quest'ordine tramite il legame strutturale.
+                if ($produttrice === null && $materiale->fase_produttrice_id !== null) {
+                    $produttrice = FaseOrdine::find($materiale->fase_produttrice_id);
+                }
+
                 $out[] = [
                     'tipo' => 'semilavorato',
                     'articolo' => $materiale->articolo_codice,
