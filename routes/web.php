@@ -14,6 +14,7 @@ use App\Http\Controllers\Operatore\EsecuzioneController;
 use App\Http\Controllers\Operatore\OperatoreAuthController;
 use App\Http\Controllers\Operatore\SplitController;
 use App\Http\Controllers\Operatore\SyncController;
+use App\Http\Controllers\Produzione\ChiusuraController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -27,7 +28,10 @@ Route::get('/', function () {
 });
 
 /*
-| Area operatore (§7, §8): login rapido via PIN su tablet condiviso e coda di lavoro di reparto.
+| Area operatore (§7, §8): login rapido via PIN su tablet condiviso e coda di lavoro.
+| L'AVANZAMENTO (coda/esecuzione/split/sync) e' aperto a chi puo' "avanzare produzione"
+| (operatore + backoffice, change #1). Il filtro per reparto e' applicato nei controller:
+| l'operatore vede solo i propri reparti, il backoffice tutti.
 */
 Route::prefix('operatore')->name('operatore.')->group(function () {
     Route::get('login', [OperatoreAuthController::class, 'showLogin'])->name('login');
@@ -36,13 +40,15 @@ Route::prefix('operatore')->name('operatore.')->group(function () {
         ->middleware('throttle:20,1')
         ->name('pin-login');
 
-    Route::middleware(['auth', 'ruolo:operatore'])->group(function () {
+    Route::middleware(['auth', 'can:avanzare-produzione'])->group(function () {
         Route::post('logout', [OperatoreAuthController::class, 'logout'])->name('logout');
         Route::get('/', [EsecuzioneController::class, 'coda'])->name('coda');
         Route::get('step/{step}', [EsecuzioneController::class, 'show'])->name('fase');
         Route::post('step/{step}/avvia', [EsecuzioneController::class, 'avvia'])->name('step.avvia');
         Route::post('step/{step}/materiale/{materiale}/conferma', [EsecuzioneController::class, 'confermaMateriale'])->name('materiale.conferma');
         Route::post('step/{step}/chiudi', [EsecuzioneController::class, 'chiudi'])->name('step.chiudi');
+        // Prelievo da stock: chiude la fase con un lotto di semilavorato esistente (§5.3, change #3).
+        Route::post('step/{step}/completa-da-stock', [EsecuzioneController::class, 'completaDaStock'])->name('step.completa-da-stock');
 
         // Ripartizione (split) di un nodo condiviso (§5-bis).
         Route::get('split/{fase}', [SplitController::class, 'show'])->name('split');
@@ -51,9 +57,21 @@ Route::prefix('operatore')->name('operatore.')->group(function () {
 });
 
 // Sincronizzazione coda offline (§8): endpoint /api/sync idempotente, per online e replay.
-Route::middleware(['auth', 'ruolo:operatore'])
+Route::middleware(['auth', 'can:avanzare-produzione'])
     ->post('/api/sync', [SyncController::class, 'store'])
     ->name('operatore.sync');
+
+/*
+| Avanzamento produzione da backoffice (§8, change #4): elenco ordini da chiudere e chiusura
+| massiva dalla distinta esplosa. Stesso permesso dell'area operatore ('avanzare-produzione');
+| in pratica usata dal backoffice (l'operatore lavora dai tablet in /operatore). La chiusura
+| guidata fase-per-fase riusa /operatore/coda (senza vincolo di reparto per il backoffice).
+*/
+Route::middleware(['auth', 'can:avanzare-produzione'])->prefix('produzione')->name('produzione.')->group(function () {
+    Route::get('/', [ChiusuraController::class, 'index'])->name('index');
+    Route::get('/{ordine}/chiusura-massiva', [ChiusuraController::class, 'chiusuraMassiva'])->name('chiusura-massiva');
+    Route::post('/{ordine}/chiusura-massiva', [ChiusuraController::class, 'chiudi'])->name('chiudi-massivo');
+});
 
 /*
 | Area backoffice/pianificazione/admin (email + password).

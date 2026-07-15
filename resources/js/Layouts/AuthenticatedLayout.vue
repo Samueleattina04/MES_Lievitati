@@ -50,6 +50,13 @@ const can = computed(() => usePage().props.auth?.can ?? {});
                                     Ordini
                                 </NavLink>
                                 <NavLink
+                                    v-if="can.avanzareProduzione"
+                                    :href="route('produzione.index')"
+                                    :active="route().current('produzione.*')"
+                                >
+                                    Produzione
+                                </NavLink>
+                                <NavLink
                                     v-if="can.vedereGenealogia"
                                     :href="route('genealogia.index')"
                                     :active="route().current('genealogia.*')"
@@ -177,6 +184,13 @@ const can = computed(() => usePage().props.auth?.can ?? {});
                             :active="route().current('ordini.*')"
                         >
                             Ordini
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            v-if="can.avanzareProduzione"
+                            :href="route('produzione.index')"
+                            :active="route().current('produzione.*')"
+                        >
+                            Produzione
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
                             v-if="can.vedereGenealogia"

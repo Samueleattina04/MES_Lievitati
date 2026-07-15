@@ -55,7 +55,6 @@ return [
         // PROVVISORIO: ordinamento FIFO su RifLottoNum crescente. RifLottoData e' una sentinella
         // (sempre 1800-01-01) e non e' usabile. Configurabile per sostituirlo quando il gestionale
         // confermera' il campo cronologico corretto senza modifiche al codice.
-        // // PROVVISORIO: in attesa di conferma dal gestionale sul campo FIFO corretto.
         'campo_fifo' => env('MES_STOCK_CAMPO_FIFO', 'RifLottoNum'),
         'fifo_direzione' => env('MES_STOCK_FIFO_DIR', 'asc'), // asc = piu' vecchio prima
 
@@ -76,6 +75,22 @@ return [
     */
     'tolleranza_multilotto' => (float) env('MES_TOLLERANZA_MULTILOTTO', 0.01),
     'tolleranza_split' => (float) env('MES_TOLLERANZA_MULTILOTTO', 0.01),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Semilavorati: lotto in uscita, propagazione e prelievo da stock (§5.3, change #1/#3)
+    |--------------------------------------------------------------------------
+    |
+    | Sorgente per riconoscere un lotto di semilavorato "gia' esistente a sistema" (prelievo da
+    | stock -> fase chiusa senza consumo componenti). Dietro un punto di estensione
+    | (LottoSemilavoratoSourceInterface) per poter cambiare sorgente senza toccare la logica:
+    |   - 'lotti_prodotto' : i lotti gia' registrati in lotti_prodotto (default).
+    |   - (futuro)         : giacenza semilavorati su un magazzino dedicato del gestionale.
+    | TODO-DECISIONE: confermare la sorgente reale con il committente ([DA CONFERMARE] §5.3).
+    */
+    'semilavorato' => [
+        'sorgente_lotti' => env('MES_SEMILAV_SORGENTE_LOTTI', 'lotti_prodotto'),
+    ],
 
     /*
     |--------------------------------------------------------------------------

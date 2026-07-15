@@ -35,6 +35,8 @@ const statoLocale = ref(props.step.stato);
 const quantitaProdotta = ref(props.fase.quantita);
 const lottoProdotto = ref(props.fase.lotto_uscita ?? '');
 const avviso = ref('');
+// Prelievo da stock (§5.3): lotto di semilavorato gia' esistente da indicare.
+const lottoStock = ref('');
 
 const daLavorare = computed(() => statoLocale.value === 'da_lavorare');
 const inCorso = computed(() => statoLocale.value === 'in_corso');
@@ -73,6 +75,24 @@ async function esegui(tipo, payload, ottimistico, dopoOk) {
 }
 
 const avvia = () => esegui('avvio_step', { step_id: props.step.id }, () => (statoLocale.value = 'in_corso'));
+
+// Completa la fase da stock indicando un lotto di semilavorato gia' esistente (§5.3): la fase e'
+// chiusa senza consumare i componenti. Il lotto deve esistere a sistema (verificato lato server).
+const completaDaStock = () => {
+    if (lottoStock.value.trim() === '') {
+        avviso.value = 'Indica il lotto di semilavorato esistente.';
+        return;
+    }
+    if (!window.confirm(`Completare la fase da stock con il lotto "${lottoStock.value.trim()}"? I componenti NON verranno consumati.`)) {
+        return;
+    }
+    return esegui(
+        'completa_da_stock',
+        { fase_id: props.fase.id, lotto: lottoStock.value.trim() },
+        () => (statoLocale.value = 'chiusa'),
+        () => router.visit(route('operatore.coda')),
+    );
+};
 
 // Un lotto e' "manuale" se il suo codice non e' tra quelli disponibili sul mag. 06.
 const haLottoManuale = (m) =>
@@ -169,6 +189,30 @@ const chiudi = () =>
             >
                 ▶ Avvia lavorazione
             </button>
+
+            <!-- Prelievo da stock (§5.3): il semilavorato esiste gia' a un lotto noto -> fase chiusa senza consumo. -->
+            <div v-if="fase.permetti_da_stock" class="mx-auto mt-5 max-w-md rounded-2xl bg-slate-800 p-4 text-left">
+                <p class="mb-2 text-sm text-slate-300">
+                    Oppure, se questo semilavorato è già disponibile a stock, indica il <strong>lotto esistente</strong>:
+                    la fase verrà chiusa <strong>senza consumare i componenti</strong>.
+                </p>
+                <div class="flex items-center gap-2">
+                    <input
+                        v-model="lottoStock"
+                        type="text"
+                        placeholder="Lotto esistente"
+                        class="flex-1 rounded-lg border-0 bg-slate-900 px-3 py-3 text-lg text-white"
+                    />
+                    <button
+                        type="button"
+                        class="rounded-lg bg-indigo-600 px-4 py-3 text-lg font-semibold active:bg-indigo-500 disabled:opacity-40"
+                        :disabled="lottoStock.trim() === ''"
+                        @click="completaDaStock"
+                    >
+                        Completa da stock
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- Conferma materiali -->
@@ -214,7 +258,10 @@ const chiudi = () =>
                     </div>
 
                     <div v-else class="mt-3">
-                        <p v-if="daProposta[m.id]" class="mb-2 text-xs text-emerald-300">
+                        <p v-if="m.semilavorato" class="mb-2 text-xs text-indigo-300">
+                            Lotto ereditato dalla fase produttrice — modificabile.
+                        </p>
+                        <p v-else-if="daProposta[m.id]" class="mb-2 text-xs text-emerald-300">
                             Proposta FIFO dal mag.06 — confermabile o modificabile.
                         </p>
                         <div v-for="(riga, i) in lotti[m.id]" :key="i" class="mb-2 flex items-center gap-2">

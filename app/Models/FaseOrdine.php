@@ -34,6 +34,7 @@ class FaseOrdine extends Model
         'timestamp_fine',
         'is_nodo_condiviso',
         'split_completato',
+        'completata_da_stock',
     ];
 
     protected function casts(): array
@@ -47,6 +48,7 @@ class FaseOrdine extends Model
             'timestamp_fine' => 'datetime',
             'is_nodo_condiviso' => 'boolean',
             'split_completato' => 'boolean',
+            'completata_da_stock' => 'boolean',
         ];
     }
 

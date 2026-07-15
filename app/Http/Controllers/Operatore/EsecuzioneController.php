@@ -32,10 +32,12 @@ class EsecuzioneController extends Controller
     public function coda(Request $request): Response
     {
         $operatore = $request->user();
+        // L'operatore vede solo i propri reparti; il backoffice vede tutti i reparti (change #1).
+        $vincolato = $operatore->vincolatoAiReparti();
         $repartoIds = $operatore->reparti->pluck('id')->all();
 
         $steps = FaseOrdineStep::query()
-            ->whereIn('reparto_id', $repartoIds)
+            ->when($vincolato, fn ($q) => $q->whereIn('reparto_id', $repartoIds))
             ->where('stato', '!=', 'chiusa')
             ->with(['fase.ordine', 'fase.fasiFiglie', 'fase.steps', 'reparto'])
             ->get();
@@ -71,7 +73,7 @@ class EsecuzioneController extends Controller
             ->where('is_nodo_condiviso', true)
             ->where('stato', StatoFase::Chiusa->value)
             ->where('split_completato', false)
-            ->whereHas('steps', fn ($q) => $q->whereIn('reparto_id', $repartoIds))
+            ->when($vincolato, fn ($q) => $q->whereHas('steps', fn ($q2) => $q2->whereIn('reparto_id', $repartoIds)))
             ->with('ordine')
             ->get()
             ->map(fn (FaseOrdine $f) => [
@@ -84,7 +86,12 @@ class EsecuzioneController extends Controller
             ])->values();
 
         return Inertia::render('Operatore/Coda', [
-            'operatore' => ['nome' => $operatore->name, 'reparti' => $operatore->reparti->pluck('descrizione')],
+            'operatore' => [
+                'nome' => $operatore->name,
+                'reparti' => $operatore->reparti->pluck('descrizione'),
+                // Il backoffice non e' vincolato ai reparti: la UI lo segnala (change #1).
+                'tutti_reparti' => ! $vincolato,
+            ],
             'cards' => $ordinati,
             'splitPendenti' => $splitPendenti,
         ]);
@@ -93,12 +100,23 @@ class EsecuzioneController extends Controller
     public function show(Request $request, FaseOrdineStep $step): Response
     {
         $this->assicuraReparto($request, $step);
-        $step->load(['fase.materiali.consumo.lotti', 'fase.steps.reparto', 'fase.fasiFiglie:id,articolo_prodotto_codice', 'fase.lottiProdotto', 'reparto']);
+        $step->load([
+            'fase.materiali.consumo.lotti',
+            // Propagazione lotto semilavorato (§5.3): lotto della fase produttrice sulla riga-componente.
+            'fase.materiali.faseProduttrice.lottiProdotto',
+            'fase.steps.reparto',
+            'fase.fasiFiglie:id,articolo_prodotto_codice',
+            'fase.lottiProdotto',
+            'reparto',
+        ]);
 
         $fase = $step->fase;
         $lavorabile = $step->stato->value === 'in_corso' || $this->workflow->stepAvviabile($step);
         $articoloProdotto = \App\Models\Articolo::where('codice', $fase->articolo_prodotto_codice)->first();
+        $richiedeLottoUscita = $articoloProdotto?->richiedeLotto() ?? false;
         $lottoUscita = $fase->lottiProdotto->first();
+        // Prelievo da stock (§5.3): possibile finche' la fase non e' avviata e produce un lotto.
+        $permettiDaStock = $richiedeLottoUscita && $fase->stato->value === 'da_lavorare';
 
         return Inertia::render('Operatore/Fase', [
             'step' => [
@@ -120,8 +138,10 @@ class EsecuzioneController extends Controller
                 'stato' => $fase->stato->value,
                 'condiviso' => $fase->is_nodo_condiviso,
                 'ordine_numero' => $fase->ordine->numero ?? null,
-                'richiede_lotto_uscita' => $articoloProdotto?->richiedeLotto() ?? false,
+                'richiede_lotto_uscita' => $richiedeLottoUscita,
                 'lotto_uscita' => $lottoUscita?->lotto,
+                'completata_da_stock' => $fase->completata_da_stock,
+                'permetti_da_stock' => $permettiDaStock,
                 'steps' => $fase->steps->map(fn ($s) => [
                     'reparto' => $s->reparto?->descrizione,
                     'ordine' => $s->ordine,
@@ -139,21 +159,30 @@ class EsecuzioneController extends Controller
      */
     private function materialePerUi(MaterialeFase $m): array
     {
-        // I semilavorati non sono verificati sul mag. 06 (§5): giacenza n/d, nessuna proposta lotti.
+        // I semilavorati non sono verificati sul mag. 06 (§5): giacenza n/d, nessuna proposta FIFO.
         $verificaStock = ! $m->e_semilavorato;
         $giacenza = $verificaStock ? $this->stock->giacenzaArticolo($m->articolo_codice) : null;
 
-        // Per i materiali a lotto (raw): lotti mag. 06 (per FIFO e per riconoscere i lotti manuali)
-        // e giacenza TOTALE nota (tutti i magazzini) per l'avviso soft sui lotti manuali.
+        // Per i materiali a lotto (materie prime): lotti mag. 06 (per FIFO e per riconoscere i lotti
+        // manuali) e giacenza TOTALE nota (tutti i magazzini) per l'avviso soft sui lotti manuali.
         $proposta = [];
         $lottiMag06 = [];
         $giacenzaTotale = null;
-        if ($verificaStock && $m->flag_lotto) {
+        $lottoPropagato = null;
+
+        if ($m->flag_lotto && $verificaStock) {
             $disponibili = $this->stock->lottiDisponibiliFifo($m->articolo_codice);
             $lottiMag06 = array_values(array_unique(array_map(fn ($l) => $l->lotto, $disponibili)));
             $giacenzaTotale = $this->stock->giacenzaTotale($m->articolo_codice);
             if ($m->consumo === null) {
                 $proposta = FifoAllocator::proponi($disponibili, (float) $m->quantita_pianificata);
+            }
+        } elseif ($m->flag_lotto && $m->e_semilavorato) {
+            // Propagazione verso l'alto (§5.3, change #2): il lotto della fase produttrice viene
+            // riportato sulla riga-componente, pre-compilato ma modificabile dall'utente.
+            $lottoPropagato = $m->faseProduttrice?->lottiProdotto->first()?->lotto;
+            if ($m->consumo === null && $lottoPropagato !== null && $lottoPropagato !== '') {
+                $proposta = [['lotto' => $lottoPropagato, 'quantita' => (float) $m->quantita_pianificata]];
             }
         }
 
@@ -165,6 +194,8 @@ class EsecuzioneController extends Controller
             'udm' => $m->udm,
             'flag_lotto' => $m->flag_lotto,
             'semilavorato' => $m->e_semilavorato,
+            // Lotto ereditato dalla fase produttrice (solo per la nota UI; il valore e' gia' in proposta_fifo).
+            'lotto_propagato' => $lottoPropagato,
             'confermato' => $m->consumo !== null,
             'quantita_effettiva' => $m->consumo?->quantita_effettiva,
             'giacenza_mag06' => $giacenza,
@@ -250,9 +281,37 @@ class EsecuzioneController extends Controller
         return redirect()->route('operatore.coda')->with('success', 'Step chiuso.');
     }
 
-    /** L'operatore puo' agire solo sugli step dei reparti a lui assegnati (§7). */
+    /**
+     * Completa la fase "da stock" indicando un lotto di semilavorato gia' esistente (§5.3, change #3):
+     * la fase e' chiusa senza consumare i componenti (prelievo da stock).
+     */
+    public function completaDaStock(Request $request, FaseOrdineStep $step): RedirectResponse
+    {
+        $this->assicuraReparto($request, $step);
+
+        $dati = $request->validate([
+            'lotto' => ['required', 'string', 'max:100'],
+        ]);
+
+        try {
+            $this->workflow->completaDaStock($step->fase, (string) $dati['lotto'], $request->user());
+        } catch (WorkflowException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return redirect()->route('operatore.coda')->with('success', 'Fase completata da stock (lotto esistente).');
+    }
+
+    /**
+     * L'operatore puo' agire solo sugli step dei reparti a lui assegnati (§7). Il backoffice non e'
+     * vincolato ai reparti (change #1): opera su qualunque fase/step.
+     */
     private function assicuraReparto(Request $request, FaseOrdineStep $step): void
     {
+        if (! $request->user()->vincolatoAiReparti()) {
+            return;
+        }
+
         $repartoIds = $request->user()->reparti->pluck('id')->all();
         abort_unless(in_array($step->reparto_id, $repartoIds, true), 403, 'Reparto non assegnato.');
     }

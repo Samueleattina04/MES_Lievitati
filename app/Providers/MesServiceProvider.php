@@ -12,12 +12,15 @@ use App\Export\Templates\ConsumiLottiCsvTemplate;
 use App\Export\Templates\TracciatoJsonTemplate;
 use App\Export\Templates\VersamentiCsvTemplate;
 use App\Ordini\OrderExplosionPlanner;
+use App\Produzione\ChiusuraMassivaService;
 use App\Produzione\FaseWorkflowService;
 use App\Produzione\GenealogiaService;
 use App\Produzione\SplitService;
 use App\Models\User;
+use App\Stock\Contracts\LottoSemilavoratoSourceInterface;
 use App\Stock\Contracts\StockSourceAdapterInterface;
 use App\Stock\FixtureStockAdapter;
+use App\Stock\LottiProdottoSemilavoratoSource;
 use App\Stock\SqlServerStockAdapter;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\DB;
@@ -69,12 +72,34 @@ class MesServiceProvider extends ServiceProvider
             };
         });
 
+        // Sorgente per riconoscere i lotti di semilavorato gia' esistenti (§5.3, change #3).
+        $this->app->singleton(LottoSemilavoratoSourceInterface::class, function (): LottoSemilavoratoSourceInterface {
+            $sorgente = (string) config('mes.semilavorato.sorgente_lotti', 'lotti_prodotto');
+
+            return match ($sorgente) {
+                'lotti_prodotto' => new LottiProdottoSemilavoratoSource(),
+                default => throw new InvalidArgumentException(
+                    "Sorgente lotti semilavorato non valida: '{$sorgente}'. Valori ammessi: 'lotti_prodotto'."
+                ),
+            };
+        });
+
         $this->app->bind(
             FaseWorkflowService::class,
             fn (Application $app) => new FaseWorkflowService(
                 (float) config('mes.tolleranza_multilotto', 0.01),
                 $app->make(StockSourceAdapterInterface::class),
                 (bool) config('mes.stock.verifica_giacenza', true),
+                $app->make(LottoSemilavoratoSourceInterface::class),
+            ),
+        );
+
+        // Chiusura massiva backoffice (§8, change #4): orchestrazione bottom-up delle fasi di un ordine.
+        $this->app->bind(
+            ChiusuraMassivaService::class,
+            fn (Application $app) => new ChiusuraMassivaService(
+                $app->make(FaseWorkflowService::class),
+                $app->make(SplitService::class),
             ),
         );
 
@@ -98,5 +123,7 @@ class MesServiceProvider extends ServiceProvider
         Gate::define('esportare', fn (User $u) => (bool) $u->ruolo?->puoEsportare());
         Gate::define('vedere-dashboard', fn (User $u) => (bool) $u->ruolo?->vedeDashboard());
         Gate::define('vedere-genealogia', fn (User $u) => (bool) $u->ruolo?->vedeGenealogia());
+        // Avanzamento produzione (operatore + backoffice): area /operatore, /api/sync, chiusura massiva.
+        Gate::define('avanzare-produzione', fn (User $u) => (bool) $u->ruolo?->puoAvanzareProduzione());
     }
 }

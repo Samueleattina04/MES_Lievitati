@@ -60,4 +60,16 @@ class User extends Authenticatable
     {
         return $this->ruolo === RuoloUtente::Admin;
     }
+
+    /** Puo' eseguire l'avanzamento di produzione (operatore o backoffice, change #1). */
+    public function puoAvanzareProduzione(): bool
+    {
+        return (bool) $this->ruolo?->puoAvanzareProduzione();
+    }
+
+    /** L'avanzamento e' vincolato ai reparti assegnati (solo operatore, change #1). */
+    public function vincolatoAiReparti(): bool
+    {
+        return (bool) $this->ruolo?->vincolatoAiReparti();
+    }
 }

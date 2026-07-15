@@ -21,7 +21,8 @@ function apri(card) {
     <OperatorLayout>
         <div class="mb-4">
             <h1 class="text-2xl font-bold">Coda di lavoro</h1>
-            <p class="text-slate-400">Reparti: {{ operatore.reparti.join(', ') }}</p>
+            <p v-if="operatore.tutti_reparti" class="text-slate-400">Backoffice · tutti i reparti</p>
+            <p v-else class="text-slate-400">Reparti: {{ operatore.reparti.join(', ') }}</p>
         </div>
 
         <!-- Ripartizioni da registrare (§5-bis): sbloccano le fasi successive -->

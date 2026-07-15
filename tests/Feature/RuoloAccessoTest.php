@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Enums\RuoloUtente;
+use App\Models\FaseOrdine;
+use App\Models\FaseOrdineStep;
+use App\Models\OrdineProduzione;
 use App\Models\User;
 use App\Ordini\OrdineProduzioneService;
 use Database\Seeders\MesConfigSeeder;
@@ -88,5 +91,52 @@ final class RuoloAccessoTest extends TestCase
         foreach (['dashboard', 'genealogia.index', 'ordini.index', 'admin.index'] as $rotta) {
             $this->actingAs($op)->get(route($rotta))->assertForbidden();
         }
+    }
+
+    /**
+     * Change #1: l'avanzamento (coda operatore + area produzione) e' consentito a Operatore e
+     * Backoffice; NON a Pianificazione ne' Admin.
+     */
+    public function test_avanzamento_produzione_backoffice_e_operatore(): void
+    {
+        // Coda operatore.
+        $this->actingAs($this->u(RuoloUtente::Backoffice))->get(route('operatore.coda'))->assertOk();
+        $this->actingAs($this->u(RuoloUtente::Operatore))->get(route('operatore.coda'))->assertOk();
+        $this->actingAs($this->u(RuoloUtente::Pianificazione))->get(route('operatore.coda'))->assertForbidden();
+        $this->actingAs($this->u(RuoloUtente::Admin))->get(route('operatore.coda'))->assertForbidden();
+
+        // Area produzione (chiusura massiva): backoffice si', pianificazione/admin no.
+        $this->actingAs($this->u(RuoloUtente::Backoffice))->get(route('produzione.index'))->assertOk();
+        $this->actingAs($this->u(RuoloUtente::Pianificazione))->get(route('produzione.index'))->assertForbidden();
+        $this->actingAs($this->u(RuoloUtente::Admin))->get(route('produzione.index'))->assertForbidden();
+    }
+
+    /**
+     * Change #1: l'operatore vede/opera solo sui propri reparti; il backoffice su tutti.
+     */
+    public function test_operatore_vincolato_ai_reparti_backoffice_no(): void
+    {
+        $ordine = app(OrdineProduzioneService::class)->creaManuale(['articolo_finito_codice' => 'PAN0104', 'quantita' => 5]);
+
+        // Step di confezionamento (reparto CONF) e step di impasto (reparto IMP).
+        $stepConf = $this->stepDi($ordine, 'PAN0104');
+        $stepImp = $this->stepDi($ordine, 'IMPASTOCOLOMBE/PANETTONI');
+
+        // Mario Rossi (primo operatore seed) e' abilitato solo a IMP.
+        $mario = User::where('name', 'Mario Rossi (Impasto)')->firstOrFail();
+        $this->actingAs($mario)->get(route('operatore.fase', $stepConf->id))->assertForbidden();
+        $this->actingAs($mario)->get(route('operatore.fase', $stepImp->id))->assertOk();
+
+        // Il backoffice non e' vincolato: accede a qualunque reparto.
+        $this->actingAs($this->u(RuoloUtente::Backoffice))->get(route('operatore.fase', $stepConf->id))->assertOk();
+        $this->actingAs($this->u(RuoloUtente::Backoffice))->get(route('operatore.fase', $stepImp->id))->assertOk();
+    }
+
+    private function stepDi(OrdineProduzione $ordine, string $articolo): FaseOrdineStep
+    {
+        $fase = FaseOrdine::where('ordine_id', $ordine->id)
+            ->where('articolo_prodotto_codice', $articolo)->firstOrFail();
+
+        return $fase->steps()->orderBy('ordine')->firstOrFail();
     }
 }

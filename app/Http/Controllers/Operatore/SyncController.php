@@ -118,6 +118,13 @@ class SyncController extends Controller
                 isset($payload['quantita_prodotta']) ? (float) $payload['quantita_prodotta'] : null,
                 $payload['lotto_prodotto'] ?? null,
             ),
+            // Prelievo da stock (§5.3, change #3): chiude la fase con un lotto esistente, senza consumo.
+            'completa_da_stock' => $this->workflow->completaDaStock(
+                FaseOrdine::findOrFail($payload['fase_id']),
+                (string) ($payload['lotto'] ?? ''),
+                $operatore,
+                $clientUuid,
+            ),
             'split' => $this->splitService->registra(
                 FaseOrdine::findOrFail($payload['fase_id']),
                 $this->normalizzaAssegnazioni($payload['assegnazioni'] ?? []),

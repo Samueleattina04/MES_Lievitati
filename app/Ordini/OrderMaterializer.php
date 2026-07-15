@@ -135,9 +135,11 @@ final class OrderMaterializer
                     'descrizione' => $mat->descrizione,
                     'quantita_pianificata' => $mat->quantitaPianificata,
                     'udm' => $mat->udm,
-                    // I semilavorati non richiedono lotto manuale: il loro lotto deriva dalla
-                    // fase produttrice (genealogia, §6). Solo le materie prime con flag_lotto.
-                    'flag_lotto' => ! $mat->eSemilavorato && ($articolo?->richiedeLotto() ?? false),
+                    // Il lotto e' richiesto dove l'anagrafica lo prevede (§5.2). I semilavorati NON
+                    // sono piu' esclusi (change #2): sulla riga-componente semilavorato il lotto della
+                    // fase produttrice viene propagato (pre-compilato ma modificabile, §5.3) e va
+                    // comunque valorizzato per chiudere la fase padre.
+                    'flag_lotto' => $articolo?->richiedeLotto() ?? false,
                     'e_semilavorato' => $mat->eSemilavorato,
                     // Semilavorato prodotto in questo ordine: la fase produttrice ha lo stesso codice.
                     'fase_produttrice_id' => $mat->eSemilavorato

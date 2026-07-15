@@ -46,53 +46,35 @@ final class GenealogiaService
         $fase->loadMissing('materiali');
         $consumi = [];
 
-        foreach ($fase->materiali as $materiale) {
-            if ($materiale->e_semilavorato && $materiale->fase_produttrice_id !== null) {
-                $produttrice = FaseOrdine::with('lottiProdotto')->find($materiale->fase_produttrice_id);
-                if ($produttrice === null) {
+        // Fase soddisfatta da stock (§5.3): il semilavorato e' stato prelevato da un lotto esistente,
+        // quindi in quest'ordine NON ha consumato i propri componenti. E' una foglia della genealogia.
+        if (! $fase->completata_da_stock) {
+            foreach ($fase->materiali as $materiale) {
+                if ($materiale->e_semilavorato) {
+                    $consumi = array_merge($consumi, $this->ritrosoSemilavorato($materiale));
+
                     continue;
                 }
-                if ($produttrice->lottiProdotto->isEmpty()) {
-                    $consumi[] = [
-                        'tipo' => 'semilavorato',
-                        'articolo' => $materiale->articolo_codice,
-                        'lotto' => null,
-                        'quantita' => (float) $materiale->quantita_pianificata,
-                        'origine' => $this->ritrosoFase($produttrice, null),
-                    ];
-                } else {
-                    foreach ($produttrice->lottiProdotto as $lp) {
+
+                // Materia prima: usa i lotti effettivamente consumati (multi-lotto).
+                $consumo = $materiale->consumo()->with('lotti')->first();
+                if ($consumo !== null && $consumo->lotti->isNotEmpty()) {
+                    foreach ($consumo->lotti as $riga) {
                         $consumi[] = [
-                            'tipo' => 'semilavorato',
+                            'tipo' => 'materia_prima',
                             'articolo' => $materiale->articolo_codice,
-                            'lotto' => $lp->lotto,
-                            'quantita' => (float) $materiale->quantita_pianificata,
-                            'origine' => $this->ritrosoFase($produttrice, $lp->lotto),
+                            'lotto' => $riga->lotto,
+                            'quantita' => (float) $riga->quantita,
                         ];
                     }
-                }
-
-                continue;
-            }
-
-            // Materia prima: usa i lotti effettivamente consumati (multi-lotto).
-            $consumo = $materiale->consumo()->with('lotti')->first();
-            if ($consumo !== null && $consumo->lotti->isNotEmpty()) {
-                foreach ($consumo->lotti as $riga) {
+                } else {
                     $consumi[] = [
                         'tipo' => 'materia_prima',
                         'articolo' => $materiale->articolo_codice,
-                        'lotto' => $riga->lotto,
-                        'quantita' => (float) $riga->quantita,
+                        'lotto' => null,
+                        'quantita' => $consumo !== null ? (float) $consumo->quantita_effettiva : (float) $materiale->quantita_pianificata,
                     ];
                 }
-            } else {
-                $consumi[] = [
-                    'tipo' => 'materia_prima',
-                    'articolo' => $materiale->articolo_codice,
-                    'lotto' => null,
-                    'quantita' => $consumo !== null ? (float) $consumo->quantita_effettiva : (float) $materiale->quantita_pianificata,
-                ];
             }
         }
 
@@ -101,9 +83,74 @@ final class GenealogiaService
             'articolo' => $fase->articolo_prodotto_codice,
             'lotto' => $lotto,
             'fase_id' => $fase->id,
+            'da_stock' => (bool) $fase->completata_da_stock,
             'quantita_prodotta' => (float) ($fase->quantita_prodotta ?? $fase->quantita_pianificata),
             'consumi' => $consumi,
         ];
+    }
+
+    /**
+     * A ritroso di un componente semilavorato (§5.3): usa i lotti effettivamente consumati sulla
+     * riga (propagati dalla fase produttrice, modificati a mano o presi da stock). Per ogni lotto
+     * risale alla fase che lo ha prodotto (in quest'ordine o storicamente). In assenza di consumo
+     * esplicito ripiega sulla fase produttrice di quest'ordine.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function ritrosoSemilavorato(MaterialeFase $materiale): array
+    {
+        $consumo = $materiale->consumo()->with('lotti')->first();
+
+        if ($consumo !== null && $consumo->lotti->isNotEmpty()) {
+            $out = [];
+            foreach ($consumo->lotti as $riga) {
+                $produttrice = LottoProdotto::where('lotto', $riga->lotto)
+                    ->where('articolo_codice', $materiale->articolo_codice)
+                    ->with('fase')
+                    ->first()?->fase;
+
+                $out[] = [
+                    'tipo' => 'semilavorato',
+                    'articolo' => $materiale->articolo_codice,
+                    'lotto' => $riga->lotto,
+                    'quantita' => (float) $riga->quantita,
+                    'origine' => $produttrice !== null ? $this->ritrosoFase($produttrice, $riga->lotto) : null,
+                ];
+            }
+
+            return $out;
+        }
+
+        // Nessun consumo esplicito registrato: ripiega sulla fase produttrice di quest'ordine.
+        if ($materiale->fase_produttrice_id === null) {
+            return [];
+        }
+        $produttrice = FaseOrdine::with('lottiProdotto')->find($materiale->fase_produttrice_id);
+        if ($produttrice === null) {
+            return [];
+        }
+        if ($produttrice->lottiProdotto->isEmpty()) {
+            return [[
+                'tipo' => 'semilavorato',
+                'articolo' => $materiale->articolo_codice,
+                'lotto' => null,
+                'quantita' => (float) $materiale->quantita_pianificata,
+                'origine' => $this->ritrosoFase($produttrice, null),
+            ]];
+        }
+
+        $out = [];
+        foreach ($produttrice->lottiProdotto as $lp) {
+            $out[] = [
+                'tipo' => 'semilavorato',
+                'articolo' => $materiale->articolo_codice,
+                'lotto' => $lp->lotto,
+                'quantita' => (float) $materiale->quantita_pianificata,
+                'origine' => $this->ritrosoFase($produttrice, $lp->lotto),
+            ];
+        }
+
+        return $out;
     }
 
     /** @return list<array<string,mixed>> */
@@ -122,17 +169,25 @@ final class GenealogiaService
             }
         }
 
-        // (b) Lotto di un semilavorato: consumato dalle fasi padre (anche piu' di una, via split).
+        // (b) Lotto di un semilavorato: consumato dalle fasi padre (anche piu' di una, via split),
+        // via legame strutturale fase_produttrice. Le righe con consumo esplicito del lotto sono
+        // gia' emerse dal ramo (a): qui si evita il doppio conteggio.
         $lottiProdotto = LottoProdotto::where('lotto', $lotto)->get();
         foreach ($lottiProdotto as $lp) {
             $materialiPadre = MaterialeFase::where('fase_produttrice_id', $lp->fase_ordine_id)
                 ->where('e_semilavorato', true)
-                ->with('fase')
+                ->with(['fase', 'consumo.lotti'])
                 ->get();
             foreach ($materialiPadre as $mp) {
-                if ($mp->fase !== null) {
-                    $utilizzi[] = $this->avantiFase($mp->fase, (float) $mp->quantita_pianificata, $mp->articolo_codice);
+                if ($mp->fase === null) {
+                    continue;
                 }
+                $giaTracciato = $mp->consumo !== null
+                    && $mp->consumo->lotti->contains(fn ($l) => $l->lotto === $lotto);
+                if ($giaTracciato) {
+                    continue;
+                }
+                $utilizzi[] = $this->avantiFase($mp->fase, (float) $mp->quantita_pianificata, $mp->articolo_codice);
             }
         }
 

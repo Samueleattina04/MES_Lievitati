@@ -78,9 +78,16 @@ class SplitController extends Controller
         return redirect()->route('operatore.coda')->with('success', 'Ripartizione registrata: fasi successive sbloccate.');
     }
 
-    /** L'operatore deve appartenere a un reparto che ha prodotto questa fase. */
+    /**
+     * L'operatore deve appartenere a un reparto che ha prodotto questa fase. Il backoffice non e'
+     * vincolato ai reparti (change #1): puo' ripartire qualunque nodo condiviso.
+     */
     private function assicuraReparto(Request $request, FaseOrdine $fase): void
     {
+        if (! $request->user()->vincolatoAiReparti()) {
+            return;
+        }
+
         $repartiFase = $fase->steps()->pluck('reparto_id')->all();
         $repartiOperatore = $request->user()->reparti->pluck('id')->all();
         abort_if(empty(array_intersect($repartiFase, $repartiOperatore)), 403, 'Reparto non assegnato.');

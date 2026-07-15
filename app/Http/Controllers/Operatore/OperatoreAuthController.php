@@ -25,7 +25,8 @@ class OperatoreAuthController extends Controller
 {
     public function showLogin(Request $request): Response|RedirectResponse
     {
-        if ($request->user()?->eOperatore()) {
+        // Operatore gia' loggato o backoffice (che accede senza PIN): dritto alla coda (change #1).
+        if ($request->user()?->puoAvanzareProduzione()) {
             return redirect()->route('operatore.coda');
         }
 

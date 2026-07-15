@@ -66,6 +66,25 @@ enum RuoloUtente: string
         return in_array($this, [self::Admin, self::Backoffice, self::Pianificazione], true);
     }
 
+    /**
+     * Eseguire l'avanzamento di produzione (avvio/conferma/chiusura fasi, split, completamento
+     * da stock) — flusso operatore + chiusura massiva backoffice (§7, §8, change #1).
+     * L'Operatore e' vincolato ai reparti assegnati; il Backoffice opera su tutti i reparti.
+     */
+    public function puoAvanzareProduzione(): bool
+    {
+        return in_array($this, [self::Operatore, self::Backoffice], true);
+    }
+
+    /**
+     * L'avanzamento e' limitato ai reparti assegnati? Solo per l'Operatore (§7). Il Backoffice
+     * non e' vincolato ai reparti: vede e opera su tutte le fasi/step (change #1).
+     */
+    public function vincolatoAiReparti(): bool
+    {
+        return $this === self::Operatore;
+    }
+
     /** Consultare la genealogia lotti (traceability/richiami). */
     public function vedeGenealogia(): bool
     {
@@ -95,6 +114,8 @@ enum RuoloUtente: string
             'esportare' => $this->puoEsportare(),
             'vedereDashboard' => $this->vedeDashboard(),
             'vedereGenealogia' => $this->vedeGenealogia(),
+            'avanzareProduzione' => $this->puoAvanzareProduzione(),
+            'vincolatoAiReparti' => $this->vincolatoAiReparti(),
         ];
     }
 }

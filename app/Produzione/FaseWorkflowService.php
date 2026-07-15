@@ -14,6 +14,7 @@ use App\Models\FaseSplit;
 use App\Models\LottoProdotto;
 use App\Models\MaterialeFase;
 use App\Models\User;
+use App\Stock\Contracts\LottoSemilavoratoSourceInterface;
 use App\Stock\Contracts\StockSourceAdapterInterface;
 use App\Support\LogEventi;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +30,7 @@ final class FaseWorkflowService
         private readonly float $tolleranzaMultilotto = 0.01,
         private readonly ?StockSourceAdapterInterface $stock = null,
         private readonly bool $verificaGiacenza = true,
+        private readonly ?LottoSemilavoratoSourceInterface $lottoSemilavoratoSource = null,
     ) {}
 
     /**
@@ -44,7 +46,9 @@ final class FaseWorkflowService
 
         $splitMancante = false;
         foreach ($fase->fasiFiglie as $figlia) {
-            if ($figlia->is_nodo_condiviso) {
+            // Un nodo condiviso completato da stock (§5.3) e' gia' marcato split_completato: non
+            // richiede una ripartizione (non c'e' una quantita' prodotta da dividere).
+            if ($figlia->is_nodo_condiviso && ! $figlia->split_completato) {
                 $haSplit = FaseSplit::where('fase_sorgente_id', $figlia->id)
                     ->where('fase_destinazione_id', $fase->id)
                     ->exists();
@@ -122,6 +126,94 @@ final class FaseWorkflowService
             ]);
 
             return $step;
+        });
+    }
+
+    /**
+     * Completa una fase-nodo "da stock" (§5.3, change #3): si indica un lotto di semilavorato
+     * GIA' ESISTENTE a sistema; la fase e' chiusa automaticamente SENZA consumare i propri
+     * componenti (prelievo da stock). Il lotto indicato diventa il lotto prodotto della fase,
+     * cosi' la genealogia risale correttamente e la propagazione verso i padri funziona come per
+     * la produzione in quest'ordine.
+     */
+    public function completaDaStock(
+        FaseOrdine $fase,
+        string $lotto,
+        User $operatore,
+        ?string $clientUuid = null,
+    ): FaseOrdine {
+        $lotto = trim($lotto);
+        if ($lotto === '') {
+            throw new WorkflowException('Indicare il lotto di semilavorato esistente per il prelievo da stock.');
+        }
+
+        return DB::transaction(function () use ($fase, $lotto, $operatore, $clientUuid) {
+            $fase = FaseOrdine::whereKey($fase->id)->lockForUpdate()->firstOrFail();
+
+            if ($fase->stato === StatoFase::Chiusa) {
+                return $fase; // idempotente
+            }
+
+            // Non si preleva da stock una fase con consumi gia' registrati (produzione avviata).
+            $haConsumi = MaterialeFase::where('fase_ordine_id', $fase->id)
+                ->whereHas('consumo')
+                ->exists();
+            if ($haConsumi) {
+                throw new WorkflowException('Fase con materiali gia confermati: non puo essere completata da stock.');
+            }
+
+            // Il lotto deve essere gia' presente a sistema (§5.3): altrimenti non e' un prelievo da stock.
+            if ($this->lottoSemilavoratoSource !== null
+                && ! $this->lottoSemilavoratoSource->esisteLotto($fase->articolo_prodotto_codice, $lotto)) {
+                throw new WorkflowException(sprintf(
+                    'Il lotto %s non risulta esistente a sistema per %s: impossibile prelevare da stock.',
+                    $lotto, $fase->articolo_prodotto_codice,
+                ));
+            }
+
+            $qta = (float) $fase->quantita_pianificata;
+
+            // Chiude tutti gli step SENZA consumo dei componenti.
+            FaseOrdineStep::where('fase_ordine_id', $fase->id)->update([
+                'stato' => StatoFase::Chiusa->value,
+                'timestamp_inizio' => now(),
+                'timestamp_fine' => now(),
+                'operatore_id' => $operatore->id,
+            ]);
+
+            $fase->update([
+                'stato' => StatoFase::Chiusa,
+                'timestamp_inizio' => $fase->timestamp_inizio ?? now(),
+                'timestamp_fine' => now(),
+                'quantita_prodotta' => $qta,
+                'operatore_id' => $operatore->id,
+                'reparto_step_corrente_id' => null,
+                'completata_da_stock' => true,
+                // Nodo condiviso da stock: nessuna ripartizione necessaria (marcato completato).
+                'split_completato' => $fase->is_nodo_condiviso ? true : $fase->split_completato,
+            ]);
+
+            // Lotto prodotto = lotto esistente indicato (per genealogia e propagazione ai padri, §5.3).
+            LottoProdotto::updateOrCreate(
+                ['fase_ordine_id' => $fase->id],
+                [
+                    'articolo_codice' => $fase->articolo_prodotto_codice,
+                    'lotto' => $lotto,
+                    'quantita' => $qta,
+                    'creato_da_id' => $operatore->id,
+                    'client_uuid' => $clientUuid,
+                ],
+            );
+
+            LogEventi::registra('fase_completata_da_stock', $fase, $operatore->id, [
+                'articolo' => $fase->articolo_prodotto_codice,
+                'lotto' => $lotto,
+                'quantita' => $qta,
+            ]);
+
+            $this->verificaCompletamentoOrdine($fase);
+
+            return $fase;
         });
     }
 
