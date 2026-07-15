@@ -52,11 +52,17 @@ return [
         'col_lotto' => 'RifLottoAlfab',
         'col_giacenza_lotto' => 'QtaGiacenzaUmMag',
 
-        // PROVVISORIO: ordinamento FIFO su RifLottoNum crescente. RifLottoData e' una sentinella
-        // (sempre 1800-01-01) e non e' usabile. Configurabile per sostituirlo quando il gestionale
-        // confermera' il campo cronologico corretto senza modifiche al codice.
+        // Campo SQL usato come ordinamento FIFO di FALLBACK. Verificato sui dati reali: sia
+        // RifLottoNum (sempre 0) sia RifLottoData (sentinella 1800-01-01) NON sono usabili.
         'campo_fifo' => env('MES_STOCK_CAMPO_FIFO', 'RifLottoNum'),
         'fifo_direzione' => env('MES_STOCK_FIFO_DIR', 'asc'), // asc = piu' vecchio prima
+
+        // FIFO dal CODICE LOTTO: la data reale e' codificata nel codice lotto secondo lo standard
+        // aziendale (<prodotto>-<GIORNO><ANNO><PROGRESSIVO>, es. 7317-11126110 = giorno 111 del 2026,
+        // progressivo 110). Se attivo, i lotti sono riordinati per (anno, giorno, progressivo) dal
+        // piu' vecchio (vedi App\Stock\LottoFifoParser). Disattivabile se un domani il gestionale
+        // esporra' una data di carico affidabile (allora si usa 'campo_fifo').
+        'fifo_da_codice_lotto' => (bool) env('MES_STOCK_FIFO_DA_CODICE', true),
 
         // Fixture giacenze per sviluppo/test (un unico JSON: { "CODART": {giacenza, lotti:[...]} }).
         'fixture_path' => base_path('tests/fixtures/stock'),

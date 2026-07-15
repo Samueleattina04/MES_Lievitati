@@ -14,8 +14,10 @@ use InvalidArgumentException;
  * magazzino 06. Nomi di tabelle/colonne e campo FIFO arrivano da config (config/mes.php > stock),
  * quindi la query si adatta senza modifiche al codice.
  *
- * // PROVVISORIO: l'ordinamento FIFO usa il campo config 'campo_fifo' (attualmente RifLottoNum),
- * // in attesa di conferma dal gestionale sul campo cronologico corretto (RifLottoData e' sentinella).
+ * FIFO: i campi del gestionale sono inutilizzabili (RifLottoNum sempre 0, RifLottoData sentinella
+ * 1800-01-01). La data e' codificata nel CODICE LOTTO (vedi LottoFifoParser); quando
+ * mes.stock.fifo_da_codice_lotto e' attivo, i lotti vengono riordinati per quella chiave. In
+ * fallback resta l'ordinamento SQL sul campo 'campo_fifo'.
  */
 final class SqlServerStockAdapter implements StockSourceAdapterInterface
 {
@@ -73,11 +75,23 @@ final class SqlServerStockAdapter implements StockSourceAdapterInterface
             [$codiceArticolo, (string) $this->config['magazzino']],
         );
 
-        return array_map(static fn ($r) => new StockLotto(
+        $lotti = array_map(static fn ($r) => new StockLotto(
             lotto: (string) $r->lotto,
             quantita: (float) $r->qta,
             rifFifo: $r->rif ?? null,
         ), $rows);
+
+        // FIFO dal codice lotto (§5.2): l'ordine cronologico reale e' codificato nel codice lotto,
+        // non nei campi del gestionale. Riordina dal piu' vecchio al piu' recente; i lotti fuori
+        // formato (es. fornitori esterni) restano in coda nell'ordine SQL di partenza (usort stabile).
+        if ((bool) ($this->config['fifo_da_codice_lotto'] ?? false)) {
+            usort($lotti, static fn (StockLotto $a, StockLotto $b) => LottoFifoParser::confronta(
+                LottoFifoParser::chiave($a->lotto),
+                LottoFifoParser::chiave($b->lotto),
+            ));
+        }
+
+        return $lotti;
     }
 
     /**
