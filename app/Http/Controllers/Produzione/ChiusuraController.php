@@ -171,6 +171,30 @@ class ChiusuraController extends Controller
     }
 
     /**
+     * Aggrega i lotti disponibili sul mag. 06 per codice (somma le quantita'), preservando l'ordine
+     * FIFO. Serve alla UI per mostrare/scegliere gli altri lotti utilizzabili.
+     *
+     * @param  list<\App\Stock\StockLotto>  $disponibili
+     * @return list<array{lotto:string, quantita:float}>
+     */
+    private function aggregaLottiDisponibili(array $disponibili): array
+    {
+        $out = [];
+        $idx = [];
+        foreach ($disponibili as $l) {
+            $k = 'k'.$l->lotto;
+            if (isset($idx[$k])) {
+                $out[$idx[$k]]['quantita'] += (float) $l->quantita;
+            } else {
+                $idx[$k] = count($out);
+                $out[] = ['lotto' => (string) $l->lotto, 'quantita' => (float) $l->quantita];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Prepara la riga materiale per la vista di chiusura massiva: proposta FIFO per le materie prime,
      * lotto propagato per i semilavorati (se la fase produttrice ha gia' un lotto), giacenza mag. 06.
      *
@@ -181,6 +205,7 @@ class ChiusuraController extends Controller
         $verificaStock = ! $m->e_semilavorato;
         $proposta = [];
         $lottiMag06 = [];
+        $lottiDisponibili = [];
         $giacenza = $verificaStock ? $this->stock->giacenzaArticolo($m->articolo_codice) : null;
         $giacenzaTotale = null;
         $lottoPropagato = null;
@@ -188,6 +213,7 @@ class ChiusuraController extends Controller
         if ($m->flag_lotto && $verificaStock) {
             $disponibili = $this->stock->lottiDisponibiliFifo($m->articolo_codice);
             $lottiMag06 = array_values(array_unique(array_map(fn ($l) => $l->lotto, $disponibili)));
+            $lottiDisponibili = $this->aggregaLottiDisponibili($disponibili);
             $giacenzaTotale = $this->stock->giacenzaTotale($m->articolo_codice);
             if ($m->consumo === null) {
                 $proposta = FifoAllocator::proponi($disponibili, (float) $m->quantita_pianificata);
@@ -213,6 +239,8 @@ class ChiusuraController extends Controller
             'giacenza_mag06' => $giacenza,
             'giacenza_totale' => $giacenzaTotale,
             'lotti_mag06' => $lottiMag06,
+            // Lotti disponibili sul mag. 06 (lotto + giacenza, ordine FIFO) come scelte rapide.
+            'lotti_disponibili' => $lottiDisponibili,
             'proposta_fifo' => $proposta,
             'confermato' => $m->consumo !== null,
             'lotti' => $m->consumo

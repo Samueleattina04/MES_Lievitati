@@ -75,6 +75,24 @@ const sommaLotti = (faseId, matId) =>
 const aggiungiLotto = (faseId, matId) => stato[faseId].materiali[matId].lotti.push({ lotto: '', quantita: 0 });
 const rimuoviLotto = (faseId, matId, i) => stato[faseId].materiali[matId].lotti.splice(i, 1);
 
+// Sceglie un lotto tra quelli disponibili sul mag.06: riempie la riga vuota o ne aggiunge una nuova.
+const scegliLotto = (faseId, m, lotto) => {
+    const righe = stato[faseId].materiali[m.id].lotti;
+    if (!righe.length) {
+        righe.push({ lotto, quantita: m.quantita_pianificata });
+        return;
+    }
+    if (righe.some((r) => (r.lotto || '').trim() === lotto)) {
+        return;
+    }
+    const ultima = righe[righe.length - 1];
+    if (!(ultima.lotto || '').trim()) {
+        ultima.lotto = lotto;
+    } else {
+        righe.push({ lotto, quantita: 0 });
+    }
+};
+
 const daChiudere = computed(() => props.fasi.filter((f) => !f.gia_chiusa));
 
 function invia() {
@@ -236,6 +254,22 @@ function invia() {
                                         <div class="flex items-center justify-between text-xs text-gray-500">
                                             <button type="button" class="rounded bg-gray-200 px-2 py-1 font-semibold" @click="aggiungiLotto(f.id, m.id)">+ Lotto</button>
                                             <span>Totale: {{ sommaLotti(f.id, m.id).toFixed(3) }} {{ m.udm }}</span>
+                                        </div>
+
+                                        <!-- Lotti disponibili sul mag.06: clic per usarli. -->
+                                        <div v-if="m.lotti_disponibili && m.lotti_disponibili.length" class="mt-2">
+                                            <p class="mb-1 text-xs text-gray-500">Lotti in mag.06 (clic per usarli):</p>
+                                            <div class="flex flex-wrap gap-2">
+                                                <button
+                                                    v-for="l in m.lotti_disponibili"
+                                                    :key="l.lotto"
+                                                    type="button"
+                                                    class="rounded border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-100"
+                                                    @click="scegliLotto(f.id, m, l.lotto)"
+                                                >
+                                                    {{ l.lotto }} · {{ Number(l.quantita).toFixed(3) }}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

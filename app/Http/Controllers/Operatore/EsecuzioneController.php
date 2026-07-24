@@ -168,12 +168,14 @@ class EsecuzioneController extends Controller
         // manuali) e giacenza TOTALE nota (tutti i magazzini) per l'avviso soft sui lotti manuali.
         $proposta = [];
         $lottiMag06 = [];
+        $lottiDisponibili = [];
         $giacenzaTotale = null;
         $lottoPropagato = null;
 
         if ($m->flag_lotto && $verificaStock) {
             $disponibili = $this->stock->lottiDisponibiliFifo($m->articolo_codice);
             $lottiMag06 = array_values(array_unique(array_map(fn ($l) => $l->lotto, $disponibili)));
+            $lottiDisponibili = $this->aggregaLottiDisponibili($disponibili);
             $giacenzaTotale = $this->stock->giacenzaTotale($m->articolo_codice);
             if ($m->consumo === null) {
                 $proposta = FifoAllocator::proponi($disponibili, (float) $m->quantita_pianificata);
@@ -202,11 +204,38 @@ class EsecuzioneController extends Controller
             'giacenza_mag06' => $giacenza,
             'giacenza_totale' => $giacenzaTotale,
             'lotti_mag06' => $lottiMag06,
+            // Lotti realmente disponibili sul mag. 06 (lotto + giacenza, ordine FIFO): la UI li mostra
+            // come scelte rapide, cosi' l'utente puo' cambiare la proposta scegliendo un altro lotto.
+            'lotti_disponibili' => $lottiDisponibili,
             'proposta_fifo' => $proposta,
             'lotti' => $m->consumo
                 ? $m->consumo->lotti->map(fn ($l) => ['lotto' => $l->lotto, 'quantita' => $l->quantita])->values()
                 : [],
         ];
+    }
+
+    /**
+     * Aggrega i lotti disponibili sul mag. 06 per codice (somma le quantita'), preservando l'ordine
+     * FIFO. Serve alla UI per mostrare/scegliere gli altri lotti utilizzabili.
+     *
+     * @param  list<\App\Stock\StockLotto>  $disponibili
+     * @return list<array{lotto:string, quantita:float}>
+     */
+    private function aggregaLottiDisponibili(array $disponibili): array
+    {
+        $out = [];
+        $idx = [];
+        foreach ($disponibili as $l) {
+            $k = 'k'.$l->lotto;
+            if (isset($idx[$k])) {
+                $out[$idx[$k]]['quantita'] += (float) $l->quantita;
+            } else {
+                $idx[$k] = count($out);
+                $out[] = ['lotto' => (string) $l->lotto, 'quantita' => (float) $l->quantita];
+            }
+        }
+
+        return $out;
     }
 
     public function avvia(Request $request, FaseOrdineStep $step): RedirectResponse

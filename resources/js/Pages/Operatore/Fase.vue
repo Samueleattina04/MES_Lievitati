@@ -52,6 +52,25 @@ const sommaLotti = (id) => (lotti[id] || []).reduce((acc, r) => acc + (parseFloa
 const aggiungiLotto = (id) => lotti[id].push({ lotto: '', quantita: 0 });
 const rimuoviLotto = (id, i) => lotti[id].splice(i, 1);
 
+// Sceglie un lotto tra quelli disponibili sul mag.06: riempie la riga vuota corrente o ne aggiunge
+// una nuova (multi-lotto). Se il lotto e' gia' presente, non fa nulla.
+const scegliLotto = (m, lotto) => {
+    const righe = lotti[m.id];
+    if (!righe || !righe.length) {
+        lotti[m.id] = [{ lotto, quantita: m.quantita_pianificata }];
+        return;
+    }
+    if (righe.some((r) => (r.lotto || '').trim() === lotto)) {
+        return;
+    }
+    const ultima = righe[righe.length - 1];
+    if (!(ultima.lotto || '').trim()) {
+        ultima.lotto = lotto;
+    } else {
+        righe.push({ lotto, quantita: 0 });
+    }
+};
+
 // Avviso lato client per gli articoli NON a lotto: quantita > giacenza mag. 06 (il blocco vero e' server-side).
 const giacenzaInsufficiente = (m) =>
     !m.flag_lotto
@@ -273,6 +292,22 @@ const chiudi = () =>
                         <div class="flex items-center justify-between text-sm">
                             <button type="button" class="rounded-lg bg-slate-700 px-3 py-2 font-semibold active:bg-slate-600" @click="aggiungiLotto(m.id)">+ Lotto</button>
                             <span class="text-slate-400">Totale lotti: {{ sommaLotti(m.id).toFixed(3) }} {{ m.udm }}</span>
+                        </div>
+
+                        <!-- Lotti disponibili sul mag.06: tocca per usarli (§5.2). -->
+                        <div v-if="m.lotti_disponibili && m.lotti_disponibili.length" class="mt-3">
+                            <p class="mb-1 text-xs text-slate-400">Lotti in mag.06 (tocca per usarli):</p>
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    v-for="l in m.lotti_disponibili"
+                                    :key="l.lotto"
+                                    type="button"
+                                    class="rounded-lg bg-slate-700 px-3 py-2 text-sm active:bg-slate-600"
+                                    @click="scegliLotto(m, l.lotto)"
+                                >
+                                    {{ l.lotto }} · {{ Number(l.quantita).toFixed(3) }}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
