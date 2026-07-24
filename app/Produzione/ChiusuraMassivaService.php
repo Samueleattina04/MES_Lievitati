@@ -114,16 +114,17 @@ final class ChiusuraMassivaService
                         : (float) $materiale->quantita_pianificata;
 
                     // Auto-propagazione lotto semilavorato se non fornito (§5.3): dalla fase produttrice
-                    // (gia' chiusa grazie all'ordine bottom-up). Resta comunque sovrascrivibile via input.
-                    if ($materiale->flag_lotto && $materiale->e_semilavorato && $lotti === [] && $materiale->fase_produttrice_id) {
+                    // (gia' chiusa grazie all'ordine bottom-up), a prescindere dal flag lotto. Resta
+                    // comunque sovrascrivibile via input.
+                    if ($materiale->e_semilavorato && $lotti === [] && $materiale->fase_produttrice_id) {
                         $lp = LottoProdotto::where('fase_ordine_id', $materiale->fase_produttrice_id)->first();
                         if ($lp !== null) {
                             $lotti = [['lotto' => $lp->lotto, 'quantita' => $qta]];
                         }
                     }
 
-                    // Per i materiali a lotto la quantita' confermata = somma delle righe lotto.
-                    if ($materiale->flag_lotto && $lotti !== []) {
+                    // Se sono presenti righe lotto, la quantita' confermata = somma dei lotti.
+                    if ($lotti !== []) {
                         $qta = array_sum(array_map(fn ($l) => (float) ($l['quantita'] ?? 0), $lotti));
                     }
 

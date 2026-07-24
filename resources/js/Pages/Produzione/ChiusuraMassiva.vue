@@ -23,7 +23,7 @@ props.fasi.forEach((f) => {
     };
     f.materiali.forEach((m) => {
         let lotti = [];
-        if (m.flag_lotto) {
+        if (m.gestione_lotto) {
             if (m.proposta_fifo && m.proposta_fifo.length) {
                 lotti = m.proposta_fifo.map((l) => ({ lotto: l.lotto, quantita: l.quantita }));
             } else if (m.semilavorato && m.lotto_propagato) {
@@ -58,7 +58,7 @@ watch(
     (map) => {
         props.fasi.forEach((f) => {
             f.materiali.forEach((m) => {
-                if (m.semilavorato && m.flag_lotto) {
+                if (m.semilavorato) {
                     const riga = stato[f.id].materiali[m.id].lotti[0];
                     if (riga && (!riga.lotto || riga.lotto.trim() === '') && map[m.articolo]) {
                         riga.lotto = map[m.articolo];
@@ -109,7 +109,7 @@ function invia() {
                 quantita_prodotta: s.quantita_prodotta,
                 materiali: f.materiali.map((m) => {
                     const ms = s.materiali[m.id];
-                    if (!m.flag_lotto) {
+                    if (!m.gestione_lotto) {
                         return { materiale_id: m.id, quantita_effettiva: ms.quantita };
                     }
                     let lotti = (ms.lotti || []).filter((r) => r.lotto && r.lotto.trim() !== '');
@@ -226,7 +226,7 @@ function invia() {
                                     </div>
 
                                     <!-- Materiale NON a lotto: sola quantità -->
-                                    <div v-if="!m.flag_lotto" class="mt-2 flex items-center gap-2">
+                                    <div v-if="!m.gestione_lotto" class="mt-2 flex items-center gap-2">
                                         <input
                                             v-model="stato[f.id].materiali[m.id].quantita"
                                             type="number"

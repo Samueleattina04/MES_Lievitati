@@ -17,7 +17,7 @@ const confermatiLocali = reactive({});
 const daProposta = reactive({});
 props.materiali.forEach((m) => {
     quantita[m.id] = m.quantita_effettiva ?? m.quantita_pianificata;
-    if (m.flag_lotto) {
+    if (m.gestione_lotto) {
         if (m.lotti.length) {
             // Gia' confermato: mostra i lotti reali.
             lotti[m.id] = m.lotti.map((l) => ({ lotto: l.lotto, quantita: l.quantita }));
@@ -120,7 +120,7 @@ const haLottoManuale = (m) =>
 const conferma = (m) => {
     let confermaSuperamento = false;
 
-    if (m.flag_lotto) {
+    if (m.gestione_lotto) {
         const totale = sommaLotti(m.id);
         const superaTotaleNoto =
             m.giacenza_totale !== null && m.giacenza_totale !== undefined && totale > Number(m.giacenza_totale) + 1e-9;
@@ -138,7 +138,7 @@ const conferma = (m) => {
         }
     }
 
-    const payload = m.flag_lotto
+    const payload = m.gestione_lotto
         ? {
               step_id: props.step.id,
               materiale_id: m.id,
@@ -266,7 +266,7 @@ const chiudi = () =>
                         </button>
                     </div>
 
-                    <div v-if="!m.flag_lotto" class="mt-2">
+                    <div v-if="!m.gestione_lotto" class="mt-2">
                         <div class="flex items-center gap-2">
                             <input v-model="quantita[m.id]" type="number" step="0.000001" min="0" class="w-36 rounded-lg border-0 bg-slate-900 px-3 py-3 text-right text-xl text-white" />
                             <span class="text-slate-400">{{ m.udm }}</span>

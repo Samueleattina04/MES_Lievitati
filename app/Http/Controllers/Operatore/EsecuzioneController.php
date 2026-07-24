@@ -172,20 +172,22 @@ class EsecuzioneController extends Controller
         $giacenzaTotale = null;
         $lottoPropagato = null;
 
-        if ($m->flag_lotto && $verificaStock) {
+        if ($m->e_semilavorato) {
+            // Propagazione verso l'alto (§5.3, change #2): il lotto della fase produttrice viene
+            // riportato sulla riga-componente, pre-compilato ma modificabile. Vale SEMPRE, a
+            // prescindere dal flag lotto dell'anagrafica: un semilavorato prodotto ha comunque un lotto.
+            $lottoPropagato = $m->faseProduttrice?->lottiProdotto->first()?->lotto;
+            if ($m->consumo === null && $lottoPropagato !== null && $lottoPropagato !== '') {
+                $proposta = [['lotto' => $lottoPropagato, 'quantita' => (float) $m->quantita_pianificata]];
+            }
+        } elseif ($m->flag_lotto) {
+            // Materia prima a lotto: proposta FIFO e lotti disponibili dal mag. 06.
             $disponibili = $this->stock->lottiDisponibiliFifo($m->articolo_codice);
             $lottiMag06 = array_values(array_unique(array_map(fn ($l) => $l->lotto, $disponibili)));
             $lottiDisponibili = $this->aggregaLottiDisponibili($disponibili);
             $giacenzaTotale = $this->stock->giacenzaTotale($m->articolo_codice);
             if ($m->consumo === null) {
                 $proposta = FifoAllocator::proponi($disponibili, (float) $m->quantita_pianificata);
-            }
-        } elseif ($m->flag_lotto && $m->e_semilavorato) {
-            // Propagazione verso l'alto (§5.3, change #2): il lotto della fase produttrice viene
-            // riportato sulla riga-componente, pre-compilato ma modificabile dall'utente.
-            $lottoPropagato = $m->faseProduttrice?->lottiProdotto->first()?->lotto;
-            if ($m->consumo === null && $lottoPropagato !== null && $lottoPropagato !== '') {
-                $proposta = [['lotto' => $lottoPropagato, 'quantita' => (float) $m->quantita_pianificata]];
             }
         }
 
@@ -196,6 +198,9 @@ class EsecuzioneController extends Controller
             'quantita_pianificata' => $m->quantita_pianificata,
             'udm' => $m->udm,
             'flag_lotto' => $m->flag_lotto,
+            // La riga va gestita a lotto se l'articolo lo prevede OPPURE se e' un semilavorato
+            // (che porta sempre il lotto della fase produttrice). La UI usa questo flag.
+            'gestione_lotto' => $m->flag_lotto || $m->e_semilavorato,
             'semilavorato' => $m->e_semilavorato,
             // Lotto ereditato dalla fase produttrice (solo per la nota UI; il valore e' gia' in proposta_fifo).
             'lotto_propagato' => $lottoPropagato,

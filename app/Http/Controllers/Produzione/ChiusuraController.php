@@ -210,7 +210,15 @@ class ChiusuraController extends Controller
         $giacenzaTotale = null;
         $lottoPropagato = null;
 
-        if ($m->flag_lotto && $verificaStock) {
+        if ($m->e_semilavorato) {
+            // Propagazione (§5.3): il lotto della fase produttrice viene riportato sulla riga
+            // (pre-compilato, modificabile). Vale SEMPRE, a prescindere dal flag lotto. Se la fase
+            // produttrice non ha ancora prodotto, la propagazione completa avviene lato client.
+            $lottoPropagato = $m->faseProduttrice?->lottiProdotto->first()?->lotto;
+            if ($m->consumo === null && $lottoPropagato !== null && $lottoPropagato !== '') {
+                $proposta = [['lotto' => $lottoPropagato, 'quantita' => (float) $m->quantita_pianificata]];
+            }
+        } elseif ($m->flag_lotto) {
             $disponibili = $this->stock->lottiDisponibiliFifo($m->articolo_codice);
             $lottiMag06 = array_values(array_unique(array_map(fn ($l) => $l->lotto, $disponibili)));
             $lottiDisponibili = $this->aggregaLottiDisponibili($disponibili);
@@ -218,11 +226,6 @@ class ChiusuraController extends Controller
             if ($m->consumo === null) {
                 $proposta = FifoAllocator::proponi($disponibili, (float) $m->quantita_pianificata);
             }
-        } elseif ($m->flag_lotto && $m->e_semilavorato) {
-            // Se la fase produttrice ha gia' prodotto (o e' stata inserita a monte nella stessa
-            // vista), il lotto e' noto; altrimenti la propagazione avviene lato client durante la
-            // compilazione (§5.3).
-            $lottoPropagato = $m->faseProduttrice?->lottiProdotto->first()?->lotto;
         }
 
         return [
@@ -232,6 +235,8 @@ class ChiusuraController extends Controller
             'quantita_pianificata' => (float) $m->quantita_pianificata,
             'udm' => $m->udm,
             'flag_lotto' => $m->flag_lotto,
+            // Gestita a lotto se l'anagrafica lo prevede o se e' un semilavorato (lotto propagato).
+            'gestione_lotto' => $m->flag_lotto || $m->e_semilavorato,
             'semilavorato' => $m->e_semilavorato,
             // Articolo della fase che produce questo semilavorato: la UI lo usa per propagare il lotto.
             'articolo_produttore' => $m->e_semilavorato ? $m->articolo_codice : null,
