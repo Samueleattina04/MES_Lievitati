@@ -115,8 +115,9 @@ class EsecuzioneController extends Controller
         $articoloProdotto = \App\Models\Articolo::where('codice', $fase->articolo_prodotto_codice)->first();
         $richiedeLottoUscita = $articoloProdotto?->richiedeLotto() ?? false;
         $lottoUscita = $fase->lottiProdotto->first();
-        // Prelievo da stock (§5.3): possibile finche' la fase non e' avviata e produce un lotto.
-        $permettiDaStock = $richiedeLottoUscita && $fase->stato->value === 'da_lavorare';
+        // Prelievo da stock (§5.3): ogni fase e' un nodo prodotto, quindi e' prelevabile da stock
+        // finche' non e' avviata, a prescindere dal flag lotto della sua anagrafica.
+        $permettiDaStock = $fase->stato->value === 'da_lavorare';
 
         return Inertia::render('Operatore/Fase', [
             'step' => [
