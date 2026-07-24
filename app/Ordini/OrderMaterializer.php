@@ -26,10 +26,14 @@ final class OrderMaterializer
         private readonly int $decimali = 6,
     ) {}
 
-    public function materializza(OrdineProduzione $ordine, BomExplosion $esplosione, PhasePlan $piano): void
+    /**
+     * @param  array<string,bool>  $flagLotto  Mappa codice articolo => "gestito a lotti" dall'anagrafica
+     *                                          del gestionale (§5.2). Popola flag_lotto in automatico.
+     */
+    public function materializza(OrdineProduzione $ordine, BomExplosion $esplosione, PhasePlan $piano, array $flagLotto = []): void
     {
-        DB::transaction(function () use ($ordine, $esplosione, $piano) {
-            $this->aggiornaCacheArticoli($esplosione);
+        DB::transaction(function () use ($ordine, $esplosione, $piano, $flagLotto) {
+            $this->aggiornaCacheArticoli($esplosione, $flagLotto);
             $this->congelaDistinta($ordine, $esplosione);
 
             $config = $this->caricaConfigurazioni($piano);
@@ -41,7 +45,10 @@ final class OrderMaterializer
         });
     }
 
-    private function aggiornaCacheArticoli(BomExplosion $esplosione): void
+    /**
+     * @param  array<string,bool>  $flagLotto
+     */
+    private function aggiornaCacheArticoli(BomExplosion $esplosione, array $flagLotto = []): void
     {
         // Un articolo puo' comparire come nodo (prodotto) e come materiale: raccogliamo il tipo.
         $prodotti = collect($esplosione->codiciNodiProdotti())->flip();
@@ -57,8 +64,12 @@ final class OrderMaterializer
             $articolo->udm = $riga->udm ?? $articolo->udm;
             $articolo->udm_tecnica = $riga->udm ?? $articolo->udm_tecnica;
             $articolo->tipo = $tipo;
-            // flag_lotto proviene dall'anagrafica/MES: non lo sovrascriviamo se gia' impostato.
-            if (! $articolo->exists) {
+            // flag_lotto dall'anagrafica del gestionale se disponibile (§5.2); altrimenti false alla
+            // creazione, invariato se gia' esistente. L'override manuale (flag_lotto_override) vince
+            // comunque in Articolo::richiedeLotto().
+            if (array_key_exists($riga->articolo, $flagLotto)) {
+                $articolo->flag_lotto = $flagLotto[$riga->articolo];
+            } elseif (! $articolo->exists) {
                 $articolo->flag_lotto = false;
             }
             $articolo->save();

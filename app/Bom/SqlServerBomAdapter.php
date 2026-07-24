@@ -79,6 +79,34 @@ final class SqlServerBomAdapter implements BomSourceAdapterInterface
         ], $rows);
     }
 
+    public function flagLottoPerArticoli(array $codici): array
+    {
+        $codici = array_values(array_unique(array_filter(
+            array_map(static fn ($c) => trim((string) $c), $codici),
+            static fn (string $c) => $c !== '',
+        )));
+
+        if ($codici === []) {
+            return [];
+        }
+
+        $out = [];
+        // SQL Server ammette ~2100 parametri per query: chunk prudente.
+        foreach (array_chunk($codici, 1000) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $rows = $this->connection->select(
+                "SELECT CodArt, MagGiacPerLotti FROM ArtAnagrafica WITH (NOLOCK) WHERE CodArt IN ({$placeholders})",
+                $chunk,
+            );
+            foreach ($rows as $r) {
+                // Verificato sui dati reali: MagGiacPerLotti = 0 -> non a lotti; <> 0 (es. 4) -> a lotti.
+                $out[(string) $r->CodArt] = ((int) $r->MagGiacPerLotti) !== 0;
+            }
+        }
+
+        return $out;
+    }
+
     /**
      * Query di esplosione (§4.3) estesa con il secondo passaggio per le foglie.
      * Un solo binding posizionale: il codice dell'articolo radice.

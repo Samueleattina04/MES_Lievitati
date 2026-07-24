@@ -31,4 +31,14 @@ interface BomSourceAdapterInterface
      * @return list<array{codice:string,descrizione:?string}>
      */
     public function cercaArticoli(string $query, int $limit = 25): array;
+
+    /**
+     * Per i codici indicati, dice se l'articolo e' "gestito a lotti" secondo l'anagrafica del
+     * gestionale. Usato per popolare flag_lotto in automatico alla creazione ordine (§5.2), cosi'
+     * da non doverlo configurare a mano. L'override manuale (flag_lotto_override) resta prioritario.
+     *
+     * @param  list<string>  $codici
+     * @return array<string,bool>  mappa codice => gestito a lotti (i codici non trovati sono assenti)
+     */
+    public function flagLottoPerArticoli(array $codici): array;
 }

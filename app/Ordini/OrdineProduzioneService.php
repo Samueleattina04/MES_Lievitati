@@ -49,7 +49,12 @@ final class OrdineProduzioneService
         $piano = $this->planner->plan($esplosione, $quantita);
         $radice = $esplosione->rigaRadice();
 
-        return DB::transaction(function () use ($dati, $codice, $quantita, $esplosione, $piano, $radice) {
+        // Flag "gestito a lotti" dall'anagrafica del gestionale, per popolare flag_lotto in
+        // automatico su tutti gli articoli della distinta (§5.2). Lettura fuori transazione.
+        $codiciArticoli = $esplosione->righe()->map(fn ($r) => $r->articolo)->unique()->values()->all();
+        $flagLotto = $this->adapter->flagLottoPerArticoli($codiciArticoli);
+
+        return DB::transaction(function () use ($dati, $codice, $quantita, $esplosione, $piano, $radice, $flagLotto) {
             $ordine = OrdineProduzione::create([
                 'numero' => $dati['numero'] ?? $this->generaNumero(),
                 'articolo_finito_codice' => $codice,
@@ -63,7 +68,7 @@ final class OrdineProduzioneService
                 'note' => $dati['note'] ?? null,
             ]);
 
-            $this->materializer->materializza($ordine, $esplosione, $piano);
+            $this->materializer->materializza($ordine, $esplosione, $piano, $flagLotto);
 
             LogEventi::registra('ordine_creato', $ordine, $dati['creato_da_id'] ?? null, [
                 'articolo' => $codice,

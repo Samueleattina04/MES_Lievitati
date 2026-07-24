@@ -78,6 +78,13 @@ final class FixtureBomAdapter implements BomSourceAdapterInterface
         return $risultati;
     }
 
+    public function flagLottoPerArticoli(array $codici): array
+    {
+        // In sviluppo/test non c'e' l'anagrafica del gestionale: il flag a lotti proviene dalla
+        // configurazione MES (flag_lotto_override). Nessuna informazione da restituire qui.
+        return [];
+    }
+
     /** @return array<string,mixed>|null */
     private function leggiFixture(string $codice): ?array
     {
