@@ -57,7 +57,7 @@ final class SyncFlagLottoCommand extends Command
         $this->info(($dryRun ? '[DRY-RUN] ' : '')."Articoli con flag_lotto aggiornato: {$modArticoli}.");
 
         if ($this->option('ordini')) {
-            $modMateriali = $this->sincronizzaMateriali($dryRun);
+            $modMateriali = $this->sincronizzaMateriali($flag, $dryRun);
             $this->info(($dryRun ? '[DRY-RUN] ' : '')."Righe materiale (ordini aperti) aggiornate: {$modMateriali}.");
         } else {
             $this->line('Suggerimento: usa --ordini per allineare anche gli ordini gia\' aperti.');
@@ -99,12 +99,19 @@ final class SyncFlagLottoCommand extends Command
         return $modificati;
     }
 
-    private function sincronizzaMateriali(bool $dryRun): int
+    /**
+     * @param  array<string,bool>  $flag  Flag "a lotti" dal gestionale (stato POST-sync degli articoli).
+     */
+    private function sincronizzaMateriali(array $flag, bool $dryRun): int
     {
-        // richiedeLotto() per codice, rispettando l'override manuale (flag_lotto_override).
+        // richiedeLotto() POST-sync per codice: override manuale prioritario, altrimenti il flag dal
+        // gestionale (o quello attuale se il codice non e' nella mappa). Cosi' il conteggio e' corretto
+        // anche in dry-run, dove gli articoli non sono ancora stati salvati.
         $richiede = [];
         foreach (Articolo::with('configurazioneMes')->get() as $a) {
-            $richiede[$a->codice] = $a->richiedeLotto();
+            $override = $a->configurazioneMes?->flag_lotto_override;
+            $base = array_key_exists($a->codice, $flag) ? $flag[$a->codice] : (bool) $a->flag_lotto;
+            $richiede[$a->codice] = $override !== null ? (bool) $override : $base;
         }
 
         $ordiniAperti = OrdineProduzione::query()
