@@ -75,6 +75,22 @@ const qtaAuto = reactive({});
 const articoliCondivisi = new Set(props.fasi.filter((f) => f.condiviso).map((f) => f.articolo));
 const chiaveMat = (faseId, matId) => `${faseId}:${matId}`;
 
+// Raggruppa i lotti a stock per magazzino, per una vista più leggibile nel "preleva da stock".
+function raggruppaStock(lotti) {
+    const gruppi = [];
+    const idx = {};
+    (lotti || []).forEach((l) => {
+        if (!(l.magazzino in idx)) {
+            idx[l.magazzino] = gruppi.length;
+            gruppi.push({ magazzino: l.magazzino, lotti: [], totale: 0 });
+        }
+        const g = gruppi[idx[l.magazzino]];
+        g.lotti.push(l);
+        g.totale += Number(l.quantita) || 0;
+    });
+    return gruppi;
+}
+
 function propagaLotti() {
     const mapLotto = lottiPerArticolo.value;
     const mapQta = quantitaProdottaPerArticolo.value;
@@ -256,18 +272,27 @@ function invia() {
                                 class="w-72 rounded-lg border-gray-300 text-sm"
                                 @input="propagaLotti"
                             />
-                            <!-- Lotti a giacenza su tutti i magazzini (change #2): click per selezionare. -->
-                            <div v-if="f.lotti_stock && f.lotti_stock.length" class="mt-2 flex flex-wrap gap-2">
-                                <button
-                                    v-for="(l, i) in f.lotti_stock"
-                                    :key="i"
-                                    type="button"
-                                    class="rounded border border-indigo-200 bg-white px-2 py-1 text-xs hover:bg-indigo-100"
-                                    :class="{ 'ring-2 ring-indigo-400': stato[f.id].lotto_stock === l.lotto }"
-                                    @click="stato[f.id].lotto_stock = l.lotto; propagaLotti()"
-                                >
-                                    {{ l.lotto }} · mag.{{ l.magazzino }} · {{ Number(l.quantita).toFixed(3) }}
-                                </button>
+                            <!-- Lotti a giacenza su tutti i magazzini (change #2), raggruppati per magazzino. -->
+                            <div v-if="f.lotti_stock && f.lotti_stock.length" class="mt-2 space-y-2">
+                                <div v-for="grp in raggruppaStock(f.lotti_stock)" :key="grp.magazzino" class="overflow-hidden rounded-lg border border-indigo-100 bg-white">
+                                    <div class="flex items-center justify-between bg-indigo-100/60 px-3 py-1.5">
+                                        <span class="rounded bg-indigo-600 px-2 py-0.5 text-xs font-bold text-white">Mag. {{ grp.magazzino }}</span>
+                                        <span class="text-xs text-gray-500">{{ grp.lotti.length }} lotti · {{ grp.totale.toFixed(3) }}</span>
+                                    </div>
+                                    <div class="divide-y divide-gray-100">
+                                        <button
+                                            v-for="l in grp.lotti"
+                                            :key="l.lotto"
+                                            type="button"
+                                            class="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition"
+                                            :class="stato[f.id].lotto_stock === l.lotto ? 'bg-indigo-600 text-white' : 'hover:bg-indigo-50'"
+                                            @click="stato[f.id].lotto_stock = l.lotto; propagaLotti()"
+                                        >
+                                            <span class="font-mono">{{ l.lotto }}</span>
+                                            <span class="font-semibold tabular-nums">{{ Number(l.quantita).toFixed(3) }}</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                             <p v-else class="mt-1 text-xs text-gray-400">Nessun lotto a giacenza nei magazzini per questo articolo.</p>
                             <p class="mt-1 text-xs text-gray-500">La fase verrà chiusa senza consumare i componenti.</p>

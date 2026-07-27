@@ -38,6 +38,23 @@ const avviso = ref('');
 // Prelievo da stock (§5.3): lotto di semilavorato gia' esistente da indicare.
 const lottoStock = ref('');
 
+// Raggruppa i lotti a stock per magazzino, per una vista piu' leggibile.
+function raggruppaPerMagazzino(lotti) {
+    const gruppi = [];
+    const idx = {};
+    (lotti || []).forEach((l) => {
+        if (!(l.magazzino in idx)) {
+            idx[l.magazzino] = gruppi.length;
+            gruppi.push({ magazzino: l.magazzino, lotti: [], totale: 0 });
+        }
+        const g = gruppi[idx[l.magazzino]];
+        g.lotti.push(l);
+        g.totale += Number(l.quantita) || 0;
+    });
+    return gruppi;
+}
+const lottiStockRaggruppati = computed(() => raggruppaPerMagazzino(props.fase.lotti_stock));
+
 const daLavorare = computed(() => statoLocale.value === 'da_lavorare');
 const inCorso = computed(() => statoLocale.value === 'in_corso');
 const chiusa = computed(() => statoLocale.value === 'chiusa');
@@ -232,20 +249,27 @@ const chiudi = () =>
                     </button>
                 </div>
 
-                <!-- Lotti realmente a giacenza su tutti i magazzini (change #2): tap per selezionare. -->
-                <div v-if="fase.lotti_stock && fase.lotti_stock.length" class="mt-3">
-                    <p class="mb-1 text-xs text-slate-400">Disponibili a magazzino (tap per usarli):</p>
-                    <div class="flex flex-wrap gap-2">
-                        <button
-                            v-for="(l, i) in fase.lotti_stock"
-                            :key="i"
-                            type="button"
-                            class="rounded-lg bg-slate-700 px-3 py-2 text-sm active:bg-slate-600"
-                            :class="{ 'ring-2 ring-indigo-400': lottoStock.trim() === l.lotto }"
-                            @click="lottoStock = l.lotto"
-                        >
-                            {{ l.lotto }} · mag.{{ l.magazzino }} · {{ Number(l.quantita).toFixed(3) }} {{ fase.udm }}
-                        </button>
+                <!-- Lotti a giacenza su tutti i magazzini (change #2), raggruppati per magazzino. -->
+                <div v-if="fase.lotti_stock && fase.lotti_stock.length" class="mt-4 space-y-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Disponibile a magazzino</p>
+                    <div v-for="grp in lottiStockRaggruppati" :key="grp.magazzino" class="overflow-hidden rounded-xl bg-slate-900/70">
+                        <div class="flex items-center justify-between bg-slate-700/50 px-3 py-2">
+                            <span class="rounded-md bg-indigo-500/30 px-2 py-0.5 text-xs font-bold text-indigo-200">Mag. {{ grp.magazzino }}</span>
+                            <span class="text-xs text-slate-400">{{ grp.lotti.length }} lotti · {{ grp.totale.toFixed(3) }} {{ fase.udm }}</span>
+                        </div>
+                        <div class="divide-y divide-slate-800">
+                            <button
+                                v-for="l in grp.lotti"
+                                :key="l.lotto"
+                                type="button"
+                                class="flex w-full items-center justify-between px-3 py-3 text-left transition"
+                                :class="lottoStock.trim() === l.lotto ? 'bg-indigo-600' : 'active:bg-slate-800'"
+                                @click="lottoStock = l.lotto"
+                            >
+                                <span class="font-mono text-sm">{{ l.lotto }}</span>
+                                <span class="text-sm font-semibold tabular-nums">{{ Number(l.quantita).toFixed(3) }} {{ fase.udm }}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <p v-else class="mt-2 text-xs text-slate-500">
