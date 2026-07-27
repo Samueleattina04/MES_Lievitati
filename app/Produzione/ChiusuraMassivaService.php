@@ -60,30 +60,12 @@ final class ChiusuraMassivaService
                 }
 
                 $input = $fasiInput[$faseId] ?? [];
-                $modalita = (string) ($input['modalita'] ?? 'produzione');
 
                 try {
-                    if ($modalita === 'stock') {
-                        $this->workflow->completaDaStock(
-                            $fase,
-                            (string) ($input['lotto_stock'] ?? ''),
-                            $operatore,
-                            null,
-                            isset($input['quantita_prodotta']) && $input['quantita_prodotta'] !== null
-                                ? (float) $input['quantita_prodotta']
-                                : null,
-                        );
-                    } else {
-                        $this->produci($fase, $input, $operatore);
-                    }
+                    $this->elaboraFase($fase, $input, $operatore);
                 } catch (WorkflowException $e) {
                     // Contestualizza l'errore alla fase e propaga: la transazione annulla tutto.
-                    throw new WorkflowException(sprintf(
-                        'Fase %s%s: %s',
-                        $fase->articolo_prodotto_codice,
-                        $fase->descrizione ? " ({$fase->descrizione})" : '',
-                        $e->getMessage(),
-                    ), 0, $e);
+                    throw new WorkflowException($this->contestualizza($fase, $e), 0, $e);
                 }
             }
 
@@ -102,6 +84,94 @@ final class ChiusuraMassivaService
                 );
             }
         });
+    }
+
+    /**
+     * Chiude una SINGOLA fase dell'ordine (bottone "Completa" per fase, change). Stessa logica della
+     * chiusura in blocco ma su una fase sola, in transazione: o chiude, o lancia un WorkflowException
+     * contestualizzato con il motivo (giacenza, lotto obbligatorio, precedenze, ...). Le precedenze
+     * restano garantite dagli step (avvia() blocca se i figli non sono ancora chiusi).
+     *
+     * @param  array<string,mixed>  $input
+     */
+    public function chiudiFase(OrdineProduzione $ordine, int $faseId, array $input, User $operatore): FaseOrdine
+    {
+        /** @var FaseOrdine $fase */
+        $fase = $ordine->fasi()
+            ->with(['steps', 'materiali', 'fasiFiglie:id'])
+            ->whereKey($faseId)
+            ->firstOrFail();
+
+        return DB::transaction(function () use ($fase, $input, $operatore) {
+            if ($fase->stato === StatoFase::Chiusa) {
+                return $fase; // idempotente
+            }
+
+            try {
+                $this->elaboraFase($fase, $input, $operatore);
+            } catch (WorkflowException $e) {
+                throw new WorkflowException($this->contestualizza($fase, $e), 0, $e);
+            }
+
+            return $fase->refresh();
+        });
+    }
+
+    /**
+     * Elabora la chiusura di una fase secondo la modalita': 'stock' (prelievo da uno o piu' lotti
+     * esistenti) oppure 'produzione' (avvio/conferma materiali/chiusura step + split se condiviso).
+     *
+     * @param  array<string,mixed>  $input
+     */
+    private function elaboraFase(FaseOrdine $fase, array $input, User $operatore): void
+    {
+        $modalita = (string) ($input['modalita'] ?? 'produzione');
+
+        if ($modalita === 'stock') {
+            $this->workflow->completaDaStockMultiLotto($fase, $this->lottiStockDaInput($fase, $input), $operatore);
+
+            return;
+        }
+
+        $this->produci($fase, $input, $operatore);
+    }
+
+    /**
+     * Normalizza i lotti "da stock" dall'input: formato multi-lotto `lotti_stock = [{lotto,quantita}]`.
+     * Backward-compat: `lotto_stock` singolo (quantita' = quantita_prodotta indicata, o pianificata).
+     *
+     * @param  array<string,mixed>  $input
+     * @return list<array{lotto:string, quantita:float}>
+     */
+    private function lottiStockDaInput(FaseOrdine $fase, array $input): array
+    {
+        $lotti = [];
+        foreach ((array) ($input['lotti_stock'] ?? []) as $r) {
+            $l = trim((string) ($r['lotto'] ?? ''));
+            if ($l !== '') {
+                $lotti[] = ['lotto' => $l, 'quantita' => (float) ($r['quantita'] ?? 0)];
+            }
+        }
+
+        if ($lotti === [] && trim((string) ($input['lotto_stock'] ?? '')) !== '') {
+            $q = isset($input['quantita_prodotta']) && $input['quantita_prodotta'] !== null
+                ? (float) $input['quantita_prodotta']
+                : (float) $fase->quantita_pianificata;
+            $lotti[] = ['lotto' => trim((string) $input['lotto_stock']), 'quantita' => $q];
+        }
+
+        return $lotti;
+    }
+
+    /** Messaggio d'errore contestualizzato alla fase. */
+    private function contestualizza(FaseOrdine $fase, WorkflowException $e): string
+    {
+        return sprintf(
+            'Fase %s%s: %s',
+            $fase->articolo_prodotto_codice,
+            $fase->descrizione ? " ({$fase->descrizione})" : '',
+            $e->getMessage(),
+        );
     }
 
     /**

@@ -9,15 +9,17 @@ const props = defineProps({
 });
 
 const flashError = computed(() => usePage().props.flash?.error);
+const flashSuccess = computed(() => usePage().props.flash?.success);
 const inviando = ref(false);
+const completandoId = ref(null);
 
-// Stato editabile per fase (modalità, lotto prodotto/stock, quantità, materiali con lotti).
+// Stato editabile per fase (modalità, lotto prodotto, lotti da stock multi-riga, quantità, materiali).
 const stato = reactive({});
 props.fasi.forEach((f) => {
     stato[f.id] = {
         modalita: 'produzione',
         lotto_prodotto: f.lotto_uscita ?? '',
-        lotto_stock: '',
+        lotti_stock: [],
         quantita_prodotta: f.quantita,
         materiali: {},
     };
@@ -41,9 +43,15 @@ const lottiPerArticolo = computed(() => {
     const map = {};
     props.fasi.forEach((f) => {
         const s = stato[f.id];
-        const val = s.modalita === 'stock' ? s.lotto_stock : s.lotto_prodotto;
-        if (val && val.trim() !== '') {
-            map[f.articolo] = val.trim();
+        let val = '';
+        if (s.modalita === 'stock') {
+            const primo = (s.lotti_stock || []).find((r) => r.lotto && r.lotto.trim() !== '');
+            val = primo ? primo.lotto.trim() : '';
+        } else {
+            val = (s.lotto_prodotto || '').trim();
+        }
+        if (val !== '') {
+            map[f.articolo] = val;
         } else if (f.lotto_uscita) {
             map[f.articolo] = f.lotto_uscita;
         }
@@ -56,7 +64,10 @@ const quantitaProdottaPerArticolo = computed(() => {
     const map = {};
     props.fasi.forEach((f) => {
         const s = stato[f.id];
-        const qta = s.modalita === 'stock' ? f.quantita : s.quantita_prodotta;
+        const qta =
+            s.modalita === 'stock'
+                ? (s.lotti_stock || []).reduce((a, r) => a + (parseFloat(r.quantita) || 0), 0)
+                : s.quantita_prodotta;
         if (qta !== '' && qta !== null && qta !== undefined) {
             map[f.articolo] = Number(qta);
         }
@@ -161,6 +172,43 @@ const scegliLotto = (faseId, m, lotto) => {
     }
 };
 
+// --- Preleva da stock (multi-lotto): righe {lotto, quantita}, ognuna cappata dalla giacenza del lotto ---
+const sommaLottiStock = (faseId) =>
+    (stato[faseId].lotti_stock || []).reduce((acc, r) => acc + (parseFloat(r.quantita) || 0), 0);
+const aggiungiLottoStock = (faseId) => stato[faseId].lotti_stock.push({ lotto: '', quantita: 0 });
+const rimuoviLottoStock = (faseId, i) => {
+    stato[faseId].lotti_stock.splice(i, 1);
+    propagaLotti();
+};
+
+// Giacenza disponibile per lotto (somma sui magazzini) di una fase: per l'avviso "supera disponibile".
+function giacenzaLottiStock(f) {
+    const map = {};
+    (f.lotti_stock || []).forEach((l) => {
+        map[l.lotto] = (map[l.lotto] || 0) + Number(l.quantita);
+    });
+    return map;
+}
+
+// Clic su un lotto del picker: aggiunge una riga (o riempie la vuota) con quantità = min(disponibile,
+// quantità ancora mancante alla copertura). Combinando più lotti si copre il fabbisogno della fase.
+function scegliLottoStock(f, l) {
+    const righe = stato[f.id].lotti_stock;
+    if (righe.some((r) => (r.lotto || '').trim() === l.lotto)) {
+        return; // già scelto
+    }
+    const mancante = Math.max(0, Number(f.quantita) - sommaLottiStock(f.id));
+    const qta = mancante > 0 ? Math.min(Number(l.quantita), mancante) : Number(l.quantita);
+    const vuota = righe.find((r) => !(r.lotto || '').trim());
+    if (vuota) {
+        vuota.lotto = l.lotto;
+        vuota.quantita = qta;
+    } else {
+        righe.push({ lotto: l.lotto, quantita: qta });
+    }
+    propagaLotti();
+}
+
 const daChiudere = computed(() => props.fasi.filter((f) => !f.gia_chiusa));
 
 // Card collassabili: di default tutte chiuse, l'utente apre quella che gli serve.
@@ -179,7 +227,7 @@ function faseCompleta(f) {
     }
     const s = stato[f.id];
     if (s.modalita === 'stock') {
-        return (s.lotto_stock || '').trim() !== '';
+        return (s.lotti_stock || []).some((r) => r.lotto && r.lotto.trim() !== '');
     }
     if (f.richiede_lotto_uscita) {
         return (s.lotto_prodotto || '').trim() !== '';
@@ -187,36 +235,53 @@ function faseCompleta(f) {
     return true;
 }
 
-function invia() {
-    const payload = {
-        fasi: daChiudere.value.map((f) => {
-            const s = stato[f.id];
-            if (s.modalita === 'stock') {
-                return { fase_id: f.id, modalita: 'stock', lotto_stock: s.lotto_stock };
+// Costruisce il payload di UNA fase (usato sia dal bottone per-fase sia dalla chiusura in blocco).
+function payloadFase(f) {
+    const s = stato[f.id];
+    if (s.modalita === 'stock') {
+        return {
+            modalita: 'stock',
+            lotti_stock: (s.lotti_stock || []).filter((r) => r.lotto && r.lotto.trim() !== ''),
+        };
+    }
+    return {
+        modalita: 'produzione',
+        lotto_prodotto: s.lotto_prodotto,
+        quantita_prodotta: s.quantita_prodotta,
+        materiali: f.materiali.map((m) => {
+            const ms = s.materiali[m.id];
+            if (!m.gestione_lotto) {
+                return { materiale_id: m.id, quantita_effettiva: ms.quantita };
             }
-            return {
-                fase_id: f.id,
-                modalita: 'produzione',
-                lotto_prodotto: s.lotto_prodotto,
-                quantita_prodotta: s.quantita_prodotta,
-                materiali: f.materiali.map((m) => {
-                    const ms = s.materiali[m.id];
-                    if (!m.gestione_lotto) {
-                        return { materiale_id: m.id, quantita_effettiva: ms.quantita };
-                    }
-                    let lotti = (ms.lotti || []).filter((r) => r.lotto && r.lotto.trim() !== '');
-                    // Fallback propagazione: se semilavorato senza lotto, usa quello della fase produttrice.
-                    if (m.semilavorato && lotti.length === 0 && lottiPerArticolo.value[m.articolo]) {
-                        lotti = [{ lotto: lottiPerArticolo.value[m.articolo], quantita: m.quantita_pianificata }];
-                    }
-                    return { materiale_id: m.id, lotti };
-                }),
-            };
+            let lotti = (ms.lotti || []).filter((r) => r.lotto && r.lotto.trim() !== '');
+            // Fallback propagazione: se semilavorato senza lotto, usa quello della fase produttrice.
+            if (m.semilavorato && lotti.length === 0 && lottiPerArticolo.value[m.articolo]) {
+                lotti = [{ lotto: lottiPerArticolo.value[m.articolo], quantita: m.quantita_pianificata }];
+            }
+            return { materiale_id: m.id, lotti };
         }),
     };
+}
+
+// Chiude UNA sola fase: se ok mostra il successo (e ricarica la pagina con la fase chiusa), altrimenti
+// mostra l'alert con il motivo (giacenza, lotto obbligatorio, precedenze, ...). preserveState mantiene
+// i dati inseriti in caso di errore, così l'utente corregge senza reinserire tutto.
+function completaFase(f) {
+    completandoId.value = f.id;
+    router.post(route('produzione.chiudi-fase', [props.ordine.id, f.id]), payloadFase(f), {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => (completandoId.value = null),
+    });
+}
+
+function invia() {
+    const payload = { fasi: daChiudere.value.map((f) => ({ fase_id: f.id, ...payloadFase(f) })) };
 
     inviando.value = true;
     router.post(route('produzione.chiudi-massivo', props.ordine.id), payload, {
+        preserveScroll: true,
+        preserveState: true,
         onFinish: () => (inviando.value = false),
     });
 }
@@ -238,6 +303,7 @@ function invia() {
         <div class="py-8">
             <div class="mx-auto max-w-7xl space-y-4 px-4 sm:px-6 lg:px-8">
                 <div v-if="flashError" class="rounded-lg bg-red-100 px-4 py-3 text-red-800">{{ flashError }}</div>
+                <div v-if="flashSuccess" class="rounded-lg bg-emerald-100 px-4 py-3 text-emerald-800">{{ flashSuccess }}</div>
 
                 <div class="rounded-lg bg-white p-4 text-sm text-gray-600 shadow">
                     <div class="font-semibold text-gray-800">{{ ordine.articolo }} · {{ ordine.quantita }} {{ ordine.udm }}</div>
@@ -298,7 +364,9 @@ function invia() {
                         <div class="mb-2 text-xs text-gray-400">Reparti: {{ f.reparti.join(' → ') || 'n/d' }}</div>
 
                         <div v-if="f.gia_chiusa" class="text-sm text-gray-500">
-                            Fase già chiusa<span v-if="f.lotto_uscita"> — lotto {{ f.lotto_uscita }}</span>.
+                            Fase già chiusa<template v-if="f.lotti_uscita && f.lotti_uscita.length"> — lotti:
+                                {{ f.lotti_uscita.map((l) => `${l.lotto} (${Number(l.quantita).toFixed(3)})`).join(', ') }}</template><template
+                                v-else-if="f.lotto_uscita"> — lotto {{ f.lotto_uscita }}</template>.
                         </div>
 
                         <div v-else class="pt-3">
@@ -312,18 +380,34 @@ function invia() {
                             </label>
                         </div>
 
-                        <!-- Modalità STOCK -->
+                        <!-- Modalità STOCK (multi-lotto: si combinano più lotti fino a coprire la quantità) -->
                         <div v-if="stato[f.id].modalita === 'stock'" class="rounded-lg bg-indigo-50 p-3">
-                            <label class="mb-1 block text-sm font-medium text-gray-700">Lotto esistente del semilavorato</label>
-                            <input
-                                v-model="stato[f.id].lotto_stock"
-                                type="text"
-                                placeholder="Lotto già a sistema"
-                                class="w-72 rounded-lg border-gray-300 text-sm"
-                                @input="propagaLotti"
-                            />
-                            <!-- Lotti a giacenza su tutti i magazzini (change #2), raggruppati per magazzino. -->
+                            <label class="mb-1 block text-sm font-medium text-gray-700">Lotti esistenti da prelevare</label>
+
+                            <!-- Righe lotto scelte (lotto + quantità), con avviso se si supera la giacenza del lotto -->
+                            <div v-if="stato[f.id].lotti_stock.length" class="mb-2 space-y-1">
+                                <div v-for="(riga, i) in stato[f.id].lotti_stock" :key="i">
+                                    <div class="flex items-center gap-2">
+                                        <input v-model="riga.lotto" type="text" placeholder="Lotto" class="flex-1 rounded-lg border-gray-300 text-sm" @input="propagaLotti" />
+                                        <input v-model="riga.quantita" type="number" step="0.000001" min="0" class="w-28 rounded-lg border-gray-300 text-right text-sm" @input="propagaLotti" />
+                                        <button type="button" class="rounded bg-gray-200 px-2 py-1 text-xs" @click="rimuoviLottoStock(f.id, i)">✕</button>
+                                    </div>
+                                    <p
+                                        v-if="riga.lotto && giacenzaLottiStock(f)[riga.lotto] !== undefined && Number(riga.quantita) > giacenzaLottiStock(f)[riga.lotto] + 1e-9"
+                                        class="mt-0.5 text-xs font-medium text-red-600"
+                                    >
+                                        Supera la giacenza del lotto ({{ giacenzaLottiStock(f)[riga.lotto].toFixed(3) }} disponibili).
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="mb-2 flex items-center justify-between text-xs text-gray-500">
+                                <button type="button" class="rounded bg-gray-200 px-2 py-1 font-semibold" @click="aggiungiLottoStock(f.id)">+ Lotto</button>
+                                <span>Totale prelevato: {{ sommaLottiStock(f.id).toFixed(3) }} / {{ f.quantita }} {{ f.udm }}</span>
+                            </div>
+
+                            <!-- Lotti a giacenza su tutti i magazzini (change #2), raggruppati: clic per aggiungerli. -->
                             <div v-if="f.lotti_stock && f.lotti_stock.length" class="mt-2 space-y-2">
+                                <p class="text-xs text-gray-500">Lotti a giacenza (clic per aggiungerli):</p>
                                 <div v-for="grp in raggruppaStock(f.lotti_stock)" :key="grp.magazzino" class="overflow-hidden rounded-lg border border-indigo-100 bg-white">
                                     <div class="flex items-center justify-between bg-indigo-100/60 px-3 py-1.5">
                                         <span class="rounded bg-indigo-600 px-2 py-0.5 text-xs font-bold text-white">Mag. {{ grp.magazzino }}</span>
@@ -335,8 +419,8 @@ function invia() {
                                             :key="l.lotto"
                                             type="button"
                                             class="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition"
-                                            :class="stato[f.id].lotto_stock === l.lotto ? 'bg-indigo-600 text-white' : 'hover:bg-indigo-50'"
-                                            @click="stato[f.id].lotto_stock = l.lotto; propagaLotti()"
+                                            :class="stato[f.id].lotti_stock.some((r) => (r.lotto || '').trim() === l.lotto) ? 'bg-indigo-600 text-white' : 'hover:bg-indigo-50'"
+                                            @click="scegliLottoStock(f, l)"
                                         >
                                             <span class="font-mono">{{ l.lotto }}</span>
                                             <span class="font-semibold tabular-nums">{{ Number(l.quantita).toFixed(3) }}</span>
@@ -345,7 +429,7 @@ function invia() {
                                 </div>
                             </div>
                             <p v-else class="mt-1 text-xs text-gray-400">Nessun lotto a giacenza nei magazzini per questo articolo.</p>
-                            <p class="mt-1 text-xs text-gray-500">La fase verrà chiusa senza consumare i componenti.</p>
+                            <p class="mt-1 text-xs text-gray-500">La fase verrà chiusa senza consumare i componenti; puoi combinare più lotti fino alla quantità.</p>
                         </div>
 
                         <!-- Modalità PRODUZIONE -->
@@ -441,6 +525,19 @@ function invia() {
                                     />
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Bottone per chiudere SOLO questa fase, con esito immediato (ok o alert col motivo). -->
+                        <div class="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-gray-100 pt-3">
+                            <span v-if="!faseCompleta(f)" class="text-xs text-amber-600">Compila i campi richiesti prima di completare.</span>
+                            <button
+                                type="button"
+                                class="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+                                :disabled="completandoId === f.id"
+                                @click="completaFase(f)"
+                            >
+                                {{ completandoId === f.id ? 'Chiusura…' : 'Completa fase' }}
+                            </button>
                         </div>
                     </div>
                     </div>

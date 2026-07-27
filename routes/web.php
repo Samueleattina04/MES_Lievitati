@@ -71,6 +71,8 @@ Route::middleware(['auth', 'can:avanzare-produzione'])->prefix('produzione')->na
     Route::get('/', [ChiusuraController::class, 'index'])->name('index');
     Route::get('/{ordine}/chiusura-massiva', [ChiusuraController::class, 'chiusuraMassiva'])->name('chiusura-massiva');
     Route::post('/{ordine}/chiusura-massiva', [ChiusuraController::class, 'chiudi'])->name('chiudi-massivo');
+    // Chiusura di una singola fase (bottone "Completa" per fase).
+    Route::post('/{ordine}/fase/{fase}/chiudi', [ChiusuraController::class, 'chiudiFase'])->name('chiudi-fase');
 });
 
 /*

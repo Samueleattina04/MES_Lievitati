@@ -157,6 +157,31 @@ final class ChiusuraMassivaTest extends TestCase
         self::assertSame(0, FaseOrdine::where('ordine_id', $o->id)->where('stato', '!=', StatoFase::Chiusa->value)->count());
     }
 
+    public function test_chiudi_fase_singola_chiude_solo_quella_fase(): void
+    {
+        $o = $this->creaOrdine('PAN0104', 10);
+        $faseBase = $this->fase($o, 'IMPASTOCOLOMBE/PANETTONI'); // foglia: avviabile subito
+        $map = $this->buildMap($o);
+
+        $this->chiusura->chiudiFase($o, $faseBase->id, $map[$faseBase->id], $this->backoffice);
+
+        self::assertSame(StatoFase::Chiusa, $faseBase->fresh()->stato);
+        // L'ordine NON è completato: le altre fasi restano aperte.
+        self::assertNotSame(StatoOrdine::Completato, $o->fresh()->stato);
+        self::assertGreaterThan(0, FaseOrdine::where('ordine_id', $o->id)->where('stato', '!=', StatoFase::Chiusa->value)->count());
+    }
+
+    public function test_chiudi_fase_singola_rispetta_le_precedenze(): void
+    {
+        $o = $this->creaOrdine('PAN0104', 10);
+        $faseFinita = $this->fase($o, 'PAN0104'); // richiede prima i figli chiusi
+        $map = $this->buildMap($o);
+
+        // Chiudere il prodotto finito prima dei semilavorati deve fallire con un errore parlante.
+        $this->expectException(WorkflowException::class);
+        $this->chiusura->chiudiFase($o, $faseFinita->id, $map[$faseFinita->id], $this->backoffice);
+    }
+
     public function test_chiusura_massiva_gestisce_il_nodo_condiviso_con_split_automatico(): void
     {
         // ASSPAN01 contiene il nodo condiviso IMPASTOCOLOMBE/PANETTONI (consumato da due gusti).

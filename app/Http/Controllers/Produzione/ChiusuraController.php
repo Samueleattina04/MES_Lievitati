@@ -104,6 +104,9 @@ class ChiusuraController extends Controller
                 'permetti_da_stock' => true,
                 'lotti_stock' => $this->stock->lottiTuttiMagazzini($f->articolo_prodotto_codice),
                 'lotto_uscita' => $f->lottiProdotto->first()?->lotto,
+                'lotti_uscita' => $f->lottiProdotto
+                    ->map(fn ($lp) => ['lotto' => $lp->lotto, 'quantita' => (float) $lp->quantita])
+                    ->values(),
                 'reparti' => $f->steps->map(fn ($s) => $s->reparto?->descrizione)->filter()->values(),
                 'materiali' => $f->materiali->map(fn (MaterialeFase $m) => $this->materialePerUi($m))->values(),
             ];
@@ -136,6 +139,9 @@ class ChiusuraController extends Controller
             'fasi.*.modalita' => ['required', Rule::in(['produzione', 'stock'])],
             'fasi.*.lotto_prodotto' => ['nullable', 'string', 'max:100'],
             'fasi.*.lotto_stock' => ['nullable', 'string', 'max:100'],
+            'fasi.*.lotti_stock' => ['array'],
+            'fasi.*.lotti_stock.*.lotto' => ['nullable', 'string', 'max:100'],
+            'fasi.*.lotti_stock.*.quantita' => ['nullable', 'numeric', 'min:0'],
             'fasi.*.quantita_prodotta' => ['nullable', 'numeric', 'min:0'],
             'fasi.*.materiali' => ['array'],
             'fasi.*.materiali.*.materiale_id' => ['required', 'integer'],
@@ -169,6 +175,48 @@ class ChiusuraController extends Controller
             : "Ordine {$ordine->numero} aggiornato.";
 
         return redirect()->route('produzione.index')->with('success', $messaggio);
+    }
+
+    /** Chiude una SINGOLA fase dell'ordine (bottone "Completa" per fase). */
+    public function chiudiFase(Request $request, OrdineProduzione $ordine, FaseOrdine $fase): RedirectResponse
+    {
+        if (in_array($ordine->stato, [StatoOrdine::Completato, StatoOrdine::Esportato], true)) {
+            return back()->with('error', "Ordine {$ordine->numero} gia {$ordine->stato->label()}: chiusura non applicabile.");
+        }
+        if ($fase->ordine_id !== $ordine->id) {
+            return back()->with('error', 'La fase non appartiene a questo ordine.');
+        }
+
+        $dati = $request->validate([
+            'modalita' => ['required', Rule::in(['produzione', 'stock'])],
+            'lotto_prodotto' => ['nullable', 'string', 'max:100'],
+            'lotto_stock' => ['nullable', 'string', 'max:100'],
+            'lotti_stock' => ['array'],
+            'lotti_stock.*.lotto' => ['nullable', 'string', 'max:100'],
+            'lotti_stock.*.quantita' => ['nullable', 'numeric', 'min:0'],
+            'quantita_prodotta' => ['nullable', 'numeric', 'min:0'],
+            'materiali' => ['array'],
+            'materiali.*.materiale_id' => ['required', 'integer'],
+            'materiali.*.quantita_effettiva' => ['nullable', 'numeric', 'min:0'],
+            'materiali.*.lotti' => ['array'],
+            'materiali.*.lotti.*.lotto' => ['nullable', 'string', 'max:100'],
+            'materiali.*.lotti.*.quantita' => ['nullable', 'numeric', 'min:0'],
+            'materiali.*.conferma_superamento' => ['boolean'],
+        ]);
+
+        try {
+            $this->chiusura->chiudiFase($ordine, $fase->id, $dati, $request->user());
+        } catch (WorkflowException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $ordine->refresh();
+        if ($ordine->stato === StatoOrdine::Completato) {
+            return redirect()->route('produzione.index')
+                ->with('success', "Ordine {$ordine->numero} completato: tutte le fasi chiuse.");
+        }
+
+        return back()->with('success', "Fase {$fase->articolo_prodotto_codice} chiusa.");
     }
 
     /**

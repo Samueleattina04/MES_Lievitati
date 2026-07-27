@@ -130,11 +130,9 @@ final class FaseWorkflowService
     }
 
     /**
-     * Completa una fase-nodo "da stock" (§5.3, change #3): si indica un lotto di semilavorato
-     * GIA' ESISTENTE a sistema; la fase e' chiusa automaticamente SENZA consumare i propri
-     * componenti (prelievo da stock). Il lotto indicato diventa il lotto prodotto della fase,
-     * cosi' la genealogia risale correttamente e la propagazione verso i padri funziona come per
-     * la produzione in quest'ordine.
+     * Completa una fase-nodo "da stock" (§5.3, change #3) indicando UN lotto di semilavorato GIA'
+     * ESISTENTE a sistema. Wrapper a lotto singolo di {@see completaDaStockMultiLotto()} (usato dal
+     * flusso operatore e da /api/sync). La quantita' prelevata e' quella pianificata (o `$quantita`).
      */
     public function completaDaStock(
         FaseOrdine $fase,
@@ -148,49 +146,85 @@ final class FaseWorkflowService
             throw new WorkflowException('Indicare il lotto di semilavorato esistente per il prelievo da stock.');
         }
 
-        return DB::transaction(function () use ($fase, $lotto, $operatore, $clientUuid, $quantita) {
+        $qta = $quantita ?? (float) $fase->quantita_pianificata;
+
+        return $this->completaDaStockMultiLotto($fase, [['lotto' => $lotto, 'quantita' => $qta]], $operatore, $clientUuid);
+    }
+
+    /**
+     * Completa una fase-nodo "da stock" da PIU' lotti esistenti (change: multi-lotto). La fase e'
+     * chiusa SENZA consumare i propri componenti; la quantita' prodotta = somma dei lotti prelevati.
+     * Ogni lotto deve esistere a sistema e — se a giacenza sul gestionale — la quantita' prelevata non
+     * puo' superare la giacenza di QUEL lotto (somma su tutti i magazzini). I lotti prelevati diventano
+     * i lotti prodotti della fase (una riga `lotti_prodotto` ciascuno) e vengono propagati ai padri.
+     *
+     * @param  list<array{lotto:string, quantita:float|int|string}>  $lottiStock
+     */
+    public function completaDaStockMultiLotto(
+        FaseOrdine $fase,
+        array $lottiStock,
+        User $operatore,
+        ?string $clientUuid = null,
+    ): FaseOrdine {
+        // Normalizza: scarta righe senza lotto, aggrega per codice lotto (l'utente puo' ripeterlo).
+        $lotti = [];
+        foreach ($lottiStock as $r) {
+            $l = trim((string) ($r['lotto'] ?? ''));
+            if ($l === '') {
+                continue;
+            }
+            $lotti[$l] = ($lotti[$l] ?? 0.0) + (float) ($r['quantita'] ?? 0);
+        }
+        if ($lotti === []) {
+            throw new WorkflowException('Indicare almeno un lotto di semilavorato esistente per il prelievo da stock.');
+        }
+
+        return DB::transaction(function () use ($fase, $lotti, $operatore, $clientUuid) {
             $fase = FaseOrdine::whereKey($fase->id)->lockForUpdate()->firstOrFail();
 
             if ($fase->stato === StatoFase::Chiusa) {
                 return $fase; // idempotente
             }
 
-            // Prelievo da stock: la fase NON produce, quindi eventuali consumi gia' registrati sui
-            // suoi componenti (es. propagati in automatico dalla chiusura dei figli, o inseriti prima
-            // di cambiare idea) vengono SCARTATI: non hanno senso se il semilavorato arriva da stock.
-            // Le righe lotto associate cadono in cascade (FK consumo_materiale_lotti).
+            $articolo = $fase->articolo_prodotto_codice;
+
+            // Prelievo da stock: la fase NON produce, quindi eventuali consumi gia' registrati sui suoi
+            // componenti (propagati dai figli o inseriti prima) vengono SCARTATI. Le righe lotto cadono
+            // in cascade (FK consumo_materiale_lotti).
             $materialiIds = MaterialeFase::where('fase_ordine_id', $fase->id)->pluck('id');
             ConsumoMateriale::whereIn('materiale_fase_id', $materialiIds)->delete();
 
-            // Il lotto deve essere gia' presente a sistema (§5.3): storico lotti_prodotto OPPURE
-            // giacenza reale sul gestionale (qualunque magazzino, change #2). Altrimenti non e' stock.
-            if (! $this->lottoEsistente($fase->articolo_prodotto_codice, $lotto)) {
-                throw new WorkflowException(sprintf(
-                    'Il lotto %s non risulta esistente a sistema per %s: impossibile prelevare da stock.',
-                    $lotto, $fase->articolo_prodotto_codice,
-                ));
-            }
-
-            $qta = $quantita ?? (float) $fase->quantita_pianificata;
-
-            // Blocco quantita': non si puo' prelevare piu' della giacenza del lotto a magazzino (somma
-            // su TUTTI i magazzini, change #2). Se il lotto e' a giacenza sul gestionale e la quantita'
-            // da prelevare la supera -> blocco. Se il lotto NON e' a magazzino ma solo nello storico
-            // lotti_prodotto (semilavorato gia' prodotto internamente), non c'e' giacenza da controllare.
-            if ($this->verificaGiacenza && $this->stock !== null) {
-                $disponibileLotto = null;
-                foreach ($this->stock->lottiTuttiMagazzini($fase->articolo_prodotto_codice) as $l) {
-                    if (trim((string) ($l['lotto'] ?? '')) === $lotto) {
-                        $disponibileLotto = ($disponibileLotto ?? 0.0) + (float) ($l['quantita'] ?? 0);
+            // Giacenza per lotto (somma su tutti i magazzini) per il cap quantita'.
+            $giacenze = [];
+            if ($this->stock !== null) {
+                foreach ($this->stock->lottiTuttiMagazzini($articolo) as $sl) {
+                    $cl = trim((string) ($sl['lotto'] ?? ''));
+                    if ($cl !== '') {
+                        $giacenze[$cl] = ($giacenze[$cl] ?? 0.0) + (float) ($sl['quantita'] ?? 0);
                     }
                 }
-                if ($disponibileLotto !== null && $qta > $disponibileLotto + 1e-9) {
+            }
+
+            foreach ($lotti as $lotto => $q) {
+                // Il lotto deve esistere a sistema: storico lotti_prodotto OPPURE giacenza (qualunque mag.).
+                if (! $this->lottoEsistente($articolo, (string) $lotto)) {
+                    throw new WorkflowException(sprintf(
+                        'Il lotto %s non risulta esistente a sistema per %s: impossibile prelevare da stock.',
+                        $lotto, $articolo,
+                    ));
+                }
+                // Cap giacenza: se il lotto e' a magazzino, non si puo' prelevare piu' del disponibile
+                // (i lotti solo storici, prodotti internamente, non hanno giacenza da controllare).
+                if ($this->verificaGiacenza && array_key_exists((string) $lotto, $giacenze)
+                    && $q > $giacenze[(string) $lotto] + 1e-9) {
                     throw new WorkflowException(sprintf(
                         'Giacenza insufficiente per il lotto %s di %s: richiesti %s, disponibili %s (tutti i magazzini).',
-                        $lotto, $fase->articolo_prodotto_codice, $this->fmt($qta), $this->fmt($disponibileLotto),
+                        $lotto, $articolo, $this->fmt($q), $this->fmt($giacenze[(string) $lotto]),
                     ));
                 }
             }
+
+            $qtaProdotta = array_sum($lotti);
 
             // Chiude tutti gli step SENZA consumo dei componenti.
             FaseOrdineStep::where('fase_ordine_id', $fase->id)->update([
@@ -204,7 +238,7 @@ final class FaseWorkflowService
                 'stato' => StatoFase::Chiusa,
                 'timestamp_inizio' => $fase->timestamp_inizio ?? now(),
                 'timestamp_fine' => now(),
-                'quantita_prodotta' => $qta,
+                'quantita_prodotta' => $qtaProdotta,
                 'operatore_id' => $operatore->id,
                 'reparto_step_corrente_id' => null,
                 'completata_da_stock' => true,
@@ -212,25 +246,28 @@ final class FaseWorkflowService
                 'split_completato' => $fase->is_nodo_condiviso ? true : $fase->split_completato,
             ]);
 
-            // Lotto prodotto = lotto esistente indicato (per genealogia e propagazione ai padri, §5.3).
-            LottoProdotto::updateOrCreate(
-                ['fase_ordine_id' => $fase->id],
-                [
-                    'articolo_codice' => $fase->articolo_prodotto_codice,
-                    'lotto' => $lotto,
-                    'quantita' => $qta,
+            // Lotti prodotti = lotti esistenti indicati (una riga ciascuno) per genealogia e propagazione.
+            LottoProdotto::where('fase_ordine_id', $fase->id)->delete();
+            $lottiProdotti = [];
+            foreach ($lotti as $lotto => $q) {
+                LottoProdotto::create([
+                    'fase_ordine_id' => $fase->id,
+                    'articolo_codice' => $articolo,
+                    'lotto' => (string) $lotto,
+                    'quantita' => $q,
                     'creato_da_id' => $operatore->id,
                     'client_uuid' => $clientUuid,
-                ],
-            );
+                ]);
+                $lottiProdotti[] = ['lotto' => (string) $lotto, 'quantita' => $q];
+            }
 
-            // Riporta il lotto sulle righe-componente delle fasi successive (§5.3, change #1).
-            $this->propagaLottoAiPadri($fase, $lotto, $operatore);
+            // Riporta i lotti sulle righe-componente delle fasi successive (§5.3, change #1).
+            $this->propagaLottiAiPadri($fase, $lottiProdotti, $operatore);
 
             LogEventi::registra('fase_completata_da_stock', $fase, $operatore->id, [
-                'articolo' => $fase->articolo_prodotto_codice,
-                'lotto' => $lotto,
-                'quantita' => $qta,
+                'articolo' => $articolo,
+                'lotti' => $lottiProdotti,
+                'quantita' => $qtaProdotta,
             ]);
 
             $this->verificaCompletamentoOrdine($fase);
@@ -264,17 +301,29 @@ final class FaseWorkflowService
     }
 
     /**
-     * Propaga il lotto prodotto/prelevato di una fase sulle righe-componente semilavorato delle fasi
+     * Propaga i lotti prodotti/prelevati di una fase sulle righe-componente semilavorato delle fasi
      * padre che lo consumano, pre-registrando il consumo (§5.3, change #1). Cosi', nelle fasi
-     * successive, il lotto compare gia' inserito senza doverlo digitare di nuovo. Non sovrascrive un
-     * consumo gia' registrato (eventuale correzione manuale).
+     * successive, il lotto compare gia' inserito senza doverlo digitare di nuovo. Con piu' lotti
+     * (prelievo da stock multi-lotto), la quantita' pianificata del padre viene ripartita tra i lotti
+     * in proporzione alle quantita' prodotte. Non sovrascrive un consumo gia' registrato (correzione).
+     *
+     * @param  list<array{lotto:string, quantita:float|int|string}>  $lottiProdotti
      */
-    private function propagaLottoAiPadri(FaseOrdine $fase, ?string $lotto, User $operatore): void
+    private function propagaLottiAiPadri(FaseOrdine $fase, array $lottiProdotti, User $operatore): void
     {
-        $lotto = $lotto !== null ? trim($lotto) : '';
-        if ($lotto === '') {
+        // Normalizza: scarta righe senza codice lotto.
+        $lotti = [];
+        foreach ($lottiProdotti as $r) {
+            $l = trim((string) ($r['lotto'] ?? ''));
+            if ($l === '') {
+                continue;
+            }
+            $lotti[] = ['lotto' => $l, 'quantita' => (float) ($r['quantita'] ?? 0)];
+        }
+        if ($lotti === []) {
             return;
         }
+        $sommaQ = array_sum(array_map(fn ($l) => $l['quantita'], $lotti));
 
         $materialiPadre = MaterialeFase::where('fase_produttrice_id', $fase->id)
             ->where('e_semilavorato', true)
@@ -288,6 +337,14 @@ final class FaseWorkflowService
             }
 
             $qta = (float) $materiale->quantita_pianificata;
+
+            // Ripartisce la quantita' del padre tra i lotti (proporzionale; uniforme se somma nulla).
+            $righe = [];
+            foreach ($lotti as $lp) {
+                $quota = $sommaQ > 1e-9 ? $qta * ($lp['quantita'] / $sommaQ) : $qta / count($lotti);
+                $righe[] = ['lotto' => $lp['lotto'], 'quantita' => $quota];
+            }
+
             $consumo = ConsumoMateriale::updateOrCreate(
                 ['materiale_fase_id' => $materiale->id],
                 [
@@ -297,12 +354,14 @@ final class FaseWorkflowService
                 ],
             );
             $consumo->lotti()->delete();
-            $consumo->lotti()->create(['lotto' => $lotto, 'quantita' => $qta]);
+            foreach ($righe as $rg) {
+                $consumo->lotti()->create(['lotto' => $rg['lotto'], 'quantita' => $rg['quantita']]);
+            }
 
             LogEventi::registra('materiale_confermato', $materiale, $operatore->id, [
                 'articolo' => $materiale->articolo_codice,
                 'pianificata' => $qta,
-                'nuovo' => ['quantita' => $qta, 'lotti' => [['lotto' => $lotto, 'quantita' => $qta]]],
+                'nuovo' => ['quantita' => $qta, 'lotti' => $righe],
                 'auto_propagato' => true,
             ]);
         }
@@ -553,7 +612,7 @@ final class FaseWorkflowService
                 }
 
                 // Riporta il lotto in uscita sulle righe-componente delle fasi successive (§5.3, change #1).
-                $this->propagaLottoAiPadri($fase, $lottoProdotto, $operatore);
+                $this->propagaLottiAiPadri($fase, [['lotto' => (string) $lottoProdotto, 'quantita' => $qtaProdotta]], $operatore);
 
                 LogEventi::registra('fase_chiusa', $fase, $operatore->id, [
                     'quantita_prodotta' => $qtaProdotta,
@@ -631,7 +690,7 @@ final class FaseWorkflowService
                 );
             }
 
-            $this->propagaLottoAiPadri($fase, $lottoProdotto, $operatore);
+            $this->propagaLottiAiPadri($fase, [['lotto' => (string) $lottoProdotto, 'quantita' => $qtaProdotta]], $operatore);
 
             LogEventi::registra('fase_chiusa', $fase, $operatore->id, [
                 'quantita_prodotta' => $qtaProdotta,

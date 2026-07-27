@@ -141,4 +141,58 @@ final class CompletamentoDaStockTest extends TestCase
         self::assertSame(StatoFase::Chiusa, $fase->fresh()->stato);
         self::assertTrue($fase->fresh()->completata_da_stock);
     }
+
+    public function test_prelievo_multi_lotto_combina_piu_lotti_e_li_propaga_al_padre(): void
+    {
+        $b = $this->creaOrdine(10);
+        $fase = $this->fase($b, 'IMPASTOCOLOMBE/PANETTONI');
+        $meta = round(((float) $fase->quantita_pianificata) / 2, 3);
+
+        // Due lotti a giacenza: si combinano per coprire il fabbisogno (100 + 150 nell'esempio utente).
+        $this->app->instance(StockSourceAdapterInterface::class, new FixtureStockAdapter([
+            'IMPASTOCOLOMBE/PANETTONI' => ['lotti' => [
+                ['lotto' => 'STK-A', 'quantita' => $meta + 5.0, 'rif_fifo' => 1],
+                ['lotto' => 'STK-B', 'quantita' => $meta + 5.0, 'rif_fifo' => 2],
+            ]],
+        ], null));
+        $wf = app(FaseWorkflowService::class);
+
+        $wf->completaDaStockMultiLotto($fase, [
+            ['lotto' => 'STK-A', 'quantita' => $meta],
+            ['lotto' => 'STK-B', 'quantita' => $meta],
+        ], $this->op);
+
+        $fase->refresh();
+        self::assertSame(StatoFase::Chiusa, $fase->stato);
+        self::assertTrue($fase->completata_da_stock);
+        self::assertSame(2, \App\Models\LottoProdotto::where('fase_ordine_id', $fase->id)->count());
+
+        // Il padre riceve il consumo del semilavorato pre-registrato con ENTRAMBI i lotti prelevati.
+        $padre = $this->fase($b, 'IMPASTOTRADPIST/AN/ALB');
+        $mat = \App\Models\MaterialeFase::where('fase_ordine_id', $padre->id)
+            ->where('articolo_codice', 'IMPASTOCOLOMBE/PANETTONI')->firstOrFail();
+        $lotti = $mat->consumo()->with('lotti')->first()?->lotti->pluck('lotto')->all() ?? [];
+        self::assertContains('STK-A', $lotti);
+        self::assertContains('STK-B', $lotti);
+    }
+
+    public function test_prelievo_multi_lotto_bloccato_se_una_riga_supera_la_giacenza(): void
+    {
+        $b = $this->creaOrdine(10);
+        $fase = $this->fase($b, 'IMPASTOCOLOMBE/PANETTONI');
+
+        $this->app->instance(StockSourceAdapterInterface::class, new FixtureStockAdapter([
+            'IMPASTOCOLOMBE/PANETTONI' => ['lotti' => [
+                ['lotto' => 'STK-A', 'quantita' => 100.0, 'rif_fifo' => 1],
+                ['lotto' => 'STK-B', 'quantita' => 1.0, 'rif_fifo' => 2],
+            ]],
+        ], null));
+        $wf = app(FaseWorkflowService::class);
+
+        $this->expectException(WorkflowException::class);
+        $wf->completaDaStockMultiLotto($fase, [
+            ['lotto' => 'STK-A', 'quantita' => 1.0],
+            ['lotto' => 'STK-B', 'quantita' => 50.0], // supera la giacenza (1.0) di STK-B
+        ], $this->op);
+    }
 }

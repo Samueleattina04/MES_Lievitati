@@ -310,17 +310,18 @@ Chiude una fase-nodo indicando un lotto di semilavorato **già esistente a siste
 i componenti (prelievo da stock). In `DB::transaction` con `lockForUpdate`: idempotente se già chiusa;
 **scarta** eventuali consumi già registrati sui componenti (non ha senso consumare se il lotto arriva da
 stock); verifica l'esistenza del lotto (`lottoEsistente()`: storico `lotti_prodotto` **oppure** giacenza
-reale su un qualunque magazzino). **Blocco quantità (change §5.1)**: se il lotto è a giacenza a magazzino,
-la quantità da prelevare non può superare la giacenza di quel lotto sommata su **tutti i magazzini**
+reale su un qualunque magazzino). **Multi-lotto**: `completaDaStockMultiLotto()` accetta una lista di
+`{lotto, quantita}` — si combinano più lotti per coprire il fabbisogno (es. 250 = 100 + 150); la quantità
+prodotta è la somma dei lotti. `completaDaStock()` (lotto singolo) è ora un wrapper di questa (usato dal
+flusso operatore e da `/api/sync`). **Blocco quantità (change §5.1)**: per OGNI lotto, se è a giacenza a
+magazzino la quantità prelevata non può superare la giacenza di quel lotto sommata su **tutti i magazzini**
 (altrimenti `WorkflowException`); i lotti solo nello storico (semilavorato prodotto internamente) non
-hanno giacenza da controllare. Accetta una `?float $quantita` opzionale (la chiusura massiva passa la
-`quantita_prodotta` inserita dal backoffice; default = quantità pianificata). Chiude tutti gli step
-e la fase (`completata_da_stock = true`), per i nodi condivisi imposta
-`split_completato = true` (nessuna ripartizione necessaria), crea il `LottoProdotto` con il lotto
-indicato (per genealogia e propagazione), logga `fase_completata_da_stock`, richiama
-`verificaCompletamentoOrdine()`. Esposto via `operatore.step.completa-da-stock` (HTTP) e via `/api/sync`
-(azione `completa_da_stock`, idempotente). In `contesto()` un figlio condiviso con `split_completato`
-non richiede più una riga `FaseSplit` per sbloccare i padri.
+hanno giacenza da controllare. Chiude tutti gli step e la fase (`completata_da_stock = true`), per i nodi
+condivisi imposta `split_completato = true`, crea **una riga `LottoProdotto` per lotto** (genealogia
+multi-lotto), propaga i lotti ai padri via `propagaLottiAiPadri()` (ripartizione proporzionale della
+quantità del padre), logga `fase_completata_da_stock`, richiama `verificaCompletamentoOrdine()`. Esposto
+via `operatore.step.completa-da-stock` (HTTP) e via `/api/sync` (azione `completa_da_stock`, idempotente).
+In `contesto()` un figlio condiviso con `split_completato` non richiede più una riga `FaseSplit`.
 
 ### 5.12 Chiusura massiva backoffice (`Produzione\ChiusuraController` + `ChiusuraMassivaService`, change #4)
 `index()` elenca gli ordini `aperto`/`in_lavorazione`. `chiusuraMassiva()` mostra `Produzione/ChiusuraMassiva`
@@ -333,6 +334,16 @@ transazione (rollback totale su `WorkflowException`, con messaggio contestualizz
 "chiusura guidata fase per fase" riusa l'area `/operatore` (accessibile al backoffice senza vincolo di
 reparto). Le fasi già chiuse vengono saltate (idempotenza), quindi la chiusura massiva funziona anche
 su ordini parzialmente avanzati.
+
+**Chiusura per singola fase (bottone "Completa fase").** Ogni card di fase ha un bottone `Completa fase`
+che chiude SOLO quella fase (`POST produzione/{ordine}/fase/{fase}/chiudi` → `ChiusuraController::chiudiFase`
+→ `ChiusuraMassivaService::chiudiFase`): se va a buon fine mostra un flash di successo e la card diventa
+"Chiusa"; altrimenti mostra l'alert col motivo (giacenza, lotto obbligatorio, precedenze non soddisfatte).
+Le precedenze restano garantite (`avvia()` blocca se i figli non sono chiusi). La UI usa `preserveState`
+così in caso di errore i dati inseriti non vanno persi. La logica di dispatch stock/produzione è condivisa
+con la chiusura in blocco (`elaboraFase()`). Il "preleva da stock" in questa pagina è **multi-lotto**
+(`lotti_stock = [{lotto,quantita}]`, si scelgono più lotti dal picker per magazzino fino a coprire la
+quantità); backward-compat con `lotto_stock` singolo.
 
 **Fasi senza step configurati (articolo non mappato a reparto/tipo-fase).** Un nodo prodotto il cui
 articolo non ha configurazione (`Reparti: n/d`) non genera step. In chiusura massiva la fase viene
@@ -421,7 +432,7 @@ Pagine Vue in `resources/js/Pages` (rese via Inertia; nomi = componenti):
   - `/ordini*` (index, create, store, show, destroy, cerca-articoli) → `can:gestire-ordini`.
   - Area `/operatore/*` (esclusi login/pin-login pubblici) e `/api/sync` → `can:avanzare-produzione`
     (Operatore+Backoffice, change #1). Il vincolo per reparto è applicato nei controller, non nel gate.
-  - `/produzione/*` (index, chiusura massiva) → `can:avanzare-produzione` (change #4).
+  - `/produzione/*` (index, chiusura massiva, chiusura per singola fase `chiudi-fase`) → `can:avanzare-produzione` (change #4).
 - **Registrazione pubblica**: le rotte `register` sono assenti da `routes/auth.php`; non esistono
   `RegisteredUserController` né `Auth/Register.vue`. La creazione utenti avviene da
   `Admin\UtenteController`.
