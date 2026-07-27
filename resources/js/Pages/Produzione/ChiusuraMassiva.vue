@@ -51,9 +51,13 @@ const lottiPerArticolo = computed(() => {
     return map;
 });
 
-// Propaga il lotto del semilavorato prodotto sulle righe-componente dei padri ANCORA VUOTE
-// (pre-compilazione modificabile: non sovrascrive un valore già digitato). Chiamata sia da un watch
-// (di sicurezza) sia direttamente dagli @input dei campi lotto, così scatta in modo affidabile.
+// Propaga il lotto del semilavorato prodotto sulle righe-componente dei padri. Il campo del padre
+// resta SINCRONIZZATO col lotto sorgente (anche mentre lo digiti, quindi niente valori "congelati"
+// a metà) finché non lo modifichi a mano: da quel momento non viene più sovrascritto (default
+// modificabile, §5.3). Il tracciamento "auto" evita di ricalpestare una scelta manuale.
+const lottoAuto = reactive({});
+const chiaveMat = (faseId, matId) => `${faseId}:${matId}`;
+
 function propagaLotti() {
     const map = lottiPerArticolo.value;
     props.fasi.forEach((f) => {
@@ -61,13 +65,29 @@ function propagaLotti() {
             if (!m.semilavorato) {
                 return;
             }
-            const ms = stato[f.id]?.materiali?.[m.id];
-            const riga = ms?.lotti?.[0];
-            if (riga && (!riga.lotto || riga.lotto.trim() === '') && map[m.articolo]) {
-                riga.lotto = map[m.articolo];
+            const nuovo = map[m.articolo];
+            if (!nuovo) {
+                return;
+            }
+            const riga = stato[f.id]?.materiali?.[m.id]?.lotti?.[0];
+            if (!riga) {
+                return;
+            }
+            const vuoto = !riga.lotto || riga.lotto.trim() === '';
+            const k = chiaveMat(f.id, m.id);
+            if (vuoto || lottoAuto[k]) {
+                riga.lotto = nuovo;
+                lottoAuto[k] = true;
             }
         });
     });
+}
+
+// L'utente ha modificato a mano il lotto di un componente: smette di essere auto-propagato.
+function lottoModificatoAMano(faseId, m) {
+    if (m.semilavorato) {
+        lottoAuto[chiaveMat(faseId, m.id)] = false;
+    }
 }
 
 watch(lottiPerArticolo, () => propagaLotti(), { deep: true, immediate: true });
@@ -264,7 +284,7 @@ function invia() {
                                             :key="i"
                                             class="mb-1 flex items-center gap-2"
                                         >
-                                            <input v-model="riga.lotto" type="text" placeholder="Lotto" class="flex-1 rounded-lg border-gray-300 text-sm" />
+                                            <input v-model="riga.lotto" type="text" placeholder="Lotto" class="flex-1 rounded-lg border-gray-300 text-sm" @input="lottoModificatoAMano(f.id, m)" />
                                             <input v-model="riga.quantita" type="number" step="0.000001" min="0" class="w-28 rounded-lg border-gray-300 text-right text-sm" />
                                             <button type="button" class="rounded bg-gray-200 px-2 py-1 text-xs" @click="rimuoviLotto(f.id, m.id, i)">✕</button>
                                         </div>
