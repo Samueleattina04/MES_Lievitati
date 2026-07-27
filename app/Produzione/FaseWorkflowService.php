@@ -141,13 +141,14 @@ final class FaseWorkflowService
         string $lotto,
         User $operatore,
         ?string $clientUuid = null,
+        ?float $quantita = null,
     ): FaseOrdine {
         $lotto = trim($lotto);
         if ($lotto === '') {
             throw new WorkflowException('Indicare il lotto di semilavorato esistente per il prelievo da stock.');
         }
 
-        return DB::transaction(function () use ($fase, $lotto, $operatore, $clientUuid) {
+        return DB::transaction(function () use ($fase, $lotto, $operatore, $clientUuid, $quantita) {
             $fase = FaseOrdine::whereKey($fase->id)->lockForUpdate()->firstOrFail();
 
             if ($fase->stato === StatoFase::Chiusa) {
@@ -170,7 +171,26 @@ final class FaseWorkflowService
                 ));
             }
 
-            $qta = (float) $fase->quantita_pianificata;
+            $qta = $quantita ?? (float) $fase->quantita_pianificata;
+
+            // Blocco quantita': non si puo' prelevare piu' della giacenza del lotto a magazzino (somma
+            // su TUTTI i magazzini, change #2). Se il lotto e' a giacenza sul gestionale e la quantita'
+            // da prelevare la supera -> blocco. Se il lotto NON e' a magazzino ma solo nello storico
+            // lotti_prodotto (semilavorato gia' prodotto internamente), non c'e' giacenza da controllare.
+            if ($this->verificaGiacenza && $this->stock !== null) {
+                $disponibileLotto = null;
+                foreach ($this->stock->lottiTuttiMagazzini($fase->articolo_prodotto_codice) as $l) {
+                    if (trim((string) ($l['lotto'] ?? '')) === $lotto) {
+                        $disponibileLotto = ($disponibileLotto ?? 0.0) + (float) ($l['quantita'] ?? 0);
+                    }
+                }
+                if ($disponibileLotto !== null && $qta > $disponibileLotto + 1e-9) {
+                    throw new WorkflowException(sprintf(
+                        'Giacenza insufficiente per il lotto %s di %s: richiesti %s, disponibili %s (tutti i magazzini).',
+                        $lotto, $fase->articolo_prodotto_codice, $this->fmt($qta), $this->fmt($disponibileLotto),
+                    ));
+                }
+            }
 
             // Chiude tutti gli step SENZA consumo dei componenti.
             FaseOrdineStep::where('fase_ordine_id', $fase->id)->update([

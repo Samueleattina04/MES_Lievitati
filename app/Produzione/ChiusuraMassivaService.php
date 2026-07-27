@@ -64,7 +64,15 @@ final class ChiusuraMassivaService
 
                 try {
                     if ($modalita === 'stock') {
-                        $this->workflow->completaDaStock($fase, (string) ($input['lotto_stock'] ?? ''), $operatore);
+                        $this->workflow->completaDaStock(
+                            $fase,
+                            (string) ($input['lotto_stock'] ?? ''),
+                            $operatore,
+                            null,
+                            isset($input['quantita_prodotta']) && $input['quantita_prodotta'] !== null
+                                ? (float) $input['quantita_prodotta']
+                                : null,
+                        );
                     } else {
                         $this->produci($fase, $input, $operatore);
                     }

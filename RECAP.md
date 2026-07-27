@@ -308,9 +308,14 @@ materiali, consumi, lotti, split, distinta).
 ### 5.11 Completamento fase da stock (`FaseWorkflowService::completaDaStock`, change #3)
 Chiude una fase-nodo indicando un lotto di semilavorato **già esistente a sistema**, senza consumare
 i componenti (prelievo da stock). In `DB::transaction` con `lockForUpdate`: idempotente se già chiusa;
-rifiuta se la fase ha già consumi registrati; verifica l'esistenza del lotto tramite
-`LottoSemilavoratoSourceInterface::esisteLotto()` (default: `lotti_prodotto`). Chiude tutti gli step
-e la fase (`completata_da_stock = true`, `quantita_prodotta = pianificata`), per i nodi condivisi imposta
+**scarta** eventuali consumi già registrati sui componenti (non ha senso consumare se il lotto arriva da
+stock); verifica l'esistenza del lotto (`lottoEsistente()`: storico `lotti_prodotto` **oppure** giacenza
+reale su un qualunque magazzino). **Blocco quantità (change §5.1)**: se il lotto è a giacenza a magazzino,
+la quantità da prelevare non può superare la giacenza di quel lotto sommata su **tutti i magazzini**
+(altrimenti `WorkflowException`); i lotti solo nello storico (semilavorato prodotto internamente) non
+hanno giacenza da controllare. Accetta una `?float $quantita` opzionale (la chiusura massiva passa la
+`quantita_prodotta` inserita dal backoffice; default = quantità pianificata). Chiude tutti gli step
+e la fase (`completata_da_stock = true`), per i nodi condivisi imposta
 `split_completato = true` (nessuna ripartizione necessaria), crea il `LottoProdotto` con il lotto
 indicato (per genealogia e propagazione), logga `fase_completata_da_stock`, richiama
 `verificaCompletamentoOrdine()`. Esposto via `operatore.step.completa-da-stock` (HTTP) e via `/api/sync`

@@ -12,6 +12,8 @@ use App\Models\User;
 use App\Ordini\OrdineProduzioneService;
 use App\Produzione\FaseWorkflowService;
 use App\Produzione\WorkflowException;
+use App\Stock\Contracts\StockSourceAdapterInterface;
+use App\Stock\FixtureStockAdapter;
 use Database\Seeders\MesConfigSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -101,5 +103,42 @@ final class CompletamentoDaStockTest extends TestCase
 
         $this->expectException(WorkflowException::class);
         $this->workflow->completaDaStock($fase, 'LOTTO-CHE-NON-ESISTE', $this->op);
+    }
+
+    public function test_prelievo_bloccato_se_quantita_supera_la_giacenza_del_lotto(): void
+    {
+        $b = $this->creaOrdine(10);
+        $fase = $this->fase($b, 'IMPASTOCOLOMBE/PANETTONI');
+        $pianificata = (float) $fase->quantita_pianificata;
+
+        // Il lotto STK-1 esiste a magazzino ma con meno del necessario: prelevarlo deve bloccare.
+        $this->app->instance(StockSourceAdapterInterface::class, new FixtureStockAdapter([
+            'IMPASTOCOLOMBE/PANETTONI' => ['lotti' => [
+                ['lotto' => 'STK-1', 'quantita' => round($pianificata / 2, 3), 'rif_fifo' => 1],
+            ]],
+        ], null));
+        $wf = app(FaseWorkflowService::class);
+
+        $this->expectException(WorkflowException::class);
+        $wf->completaDaStock($fase, 'STK-1', $this->op);
+    }
+
+    public function test_prelievo_ok_se_giacenza_del_lotto_sufficiente(): void
+    {
+        $b = $this->creaOrdine(10);
+        $fase = $this->fase($b, 'IMPASTOCOLOMBE/PANETTONI');
+        $pianificata = (float) $fase->quantita_pianificata;
+
+        $this->app->instance(StockSourceAdapterInterface::class, new FixtureStockAdapter([
+            'IMPASTOCOLOMBE/PANETTONI' => ['lotti' => [
+                ['lotto' => 'STK-1', 'quantita' => $pianificata + 100.0, 'rif_fifo' => 1],
+            ]],
+        ], null));
+        $wf = app(FaseWorkflowService::class);
+
+        $wf->completaDaStock($fase, 'STK-1', $this->op);
+
+        self::assertSame(StatoFase::Chiusa, $fase->fresh()->stato);
+        self::assertTrue($fase->fresh()->completata_da_stock);
     }
 }
