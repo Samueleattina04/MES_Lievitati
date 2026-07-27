@@ -72,6 +72,10 @@ final class EsolverVersamentiCsvTemplate implements ExportTemplateInterface
     {
         $fine = $ordine->fasi->pluck('timestamp_fine')->filter()->max();
 
+        if ($fine !== null && ! $fine instanceof \DateTimeInterface) {
+            $fine = \Illuminate\Support\Carbon::parse((string) $fine);
+        }
+
         return ($fine ?? now())->format('d/m/Y');
     }
 
