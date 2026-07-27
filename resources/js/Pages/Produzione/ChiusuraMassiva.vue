@@ -163,6 +163,30 @@ const scegliLotto = (faseId, m, lotto) => {
 
 const daChiudere = computed(() => props.fasi.filter((f) => !f.gia_chiusa));
 
+// Card collassabili: di default tutte chiuse, l'utente apre quella che gli serve.
+const espansa = reactive({});
+const toggleFase = (id) => {
+    espansa[id] = !espansa[id];
+};
+const espandiTutte = (val) => props.fasi.forEach((f) => {
+    espansa[f.id] = val;
+});
+
+// Fase "pronta": ha gia' il lotto necessario impostato (per l'indicatore nell'intestazione).
+function faseCompleta(f) {
+    if (f.gia_chiusa) {
+        return true;
+    }
+    const s = stato[f.id];
+    if (s.modalita === 'stock') {
+        return (s.lotto_stock || '').trim() !== '';
+    }
+    if (f.richiede_lotto_uscita) {
+        return (s.lotto_prodotto || '').trim() !== '';
+    }
+    return true;
+}
+
 function invia() {
     const payload = {
         fasi: daChiudere.value.map((f) => {
@@ -225,33 +249,59 @@ function invia() {
                     </p>
                 </div>
 
+                <div class="flex items-center justify-end gap-3 text-sm">
+                    <button type="button" class="text-indigo-600 hover:underline" @click="espandiTutte(true)">Espandi tutte</button>
+                    <span class="text-gray-300">·</span>
+                    <button type="button" class="text-indigo-600 hover:underline" @click="espandiTutte(false)">Comprimi tutte</button>
+                </div>
+
                 <div
                     v-for="f in fasi"
                     :key="f.id"
-                    class="rounded-lg bg-white p-5 shadow"
-                    :class="{ 'opacity-60': f.gia_chiusa }"
+                    class="overflow-hidden rounded-lg bg-white shadow"
+                    :class="{ 'opacity-70': f.gia_chiusa }"
                 >
-                    <div class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3">
-                        <div>
-                            <div class="flex items-center gap-2">
+                    <!-- Intestazione cliccabile: apre/chiude la card -->
+                    <button
+                        type="button"
+                        class="flex w-full items-center justify-between gap-3 px-5 py-3 text-left hover:bg-gray-50"
+                        @click="toggleFase(f.id)"
+                    >
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
                                 <span class="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Liv. {{ f.livello }}</span>
-                                <span class="text-lg font-bold text-gray-800">{{ f.articolo }}</span>
+                                <span class="font-bold text-gray-800">{{ f.articolo }}</span>
                                 <span v-if="f.condiviso" class="rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">CONDIVISO</span>
                                 <span v-if="f.gia_chiusa" class="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                                    {{ f.completata_da_stock ? 'Chiusa (da stock)' : 'Chiusa' }}
+                                    {{ f.completata_da_stock ? 'Chiusa (stock)' : 'Chiusa' }}
                                 </span>
+                                <span v-else-if="faseCompleta(f)" class="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">✓ pronta</span>
+                                <span v-else class="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">da compilare</span>
                             </div>
-                            <div class="text-sm text-gray-500">{{ f.descrizione }}</div>
-                            <div class="text-xs text-gray-400">Reparti: {{ f.reparti.join(' → ') || 'n/d' }}</div>
+                            <div class="truncate text-sm text-gray-500">{{ f.descrizione }}</div>
                         </div>
-                        <div class="text-right text-lg font-semibold text-gray-800">{{ f.quantita }} {{ f.udm }}</div>
-                    </div>
+                        <div class="flex shrink-0 items-center gap-3">
+                            <span class="whitespace-nowrap text-sm font-semibold text-gray-700">{{ f.quantita }} {{ f.udm }}</span>
+                            <svg
+                                class="h-5 w-5 text-gray-400 transition-transform"
+                                :class="{ 'rotate-180': espansa[f.id] }"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                            >
+                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                    </button>
 
-                    <div v-if="f.gia_chiusa" class="pt-3 text-sm text-gray-500">
-                        Fase già chiusa<span v-if="f.lotto_uscita"> — lotto {{ f.lotto_uscita }}</span>.
-                    </div>
+                    <!-- Corpo collassabile -->
+                    <div v-if="espansa[f.id]" class="border-t border-gray-100 px-5 pb-5 pt-3">
+                        <div class="mb-2 text-xs text-gray-400">Reparti: {{ f.reparti.join(' → ') || 'n/d' }}</div>
 
-                    <div v-else class="pt-3">
+                        <div v-if="f.gia_chiusa" class="text-sm text-gray-500">
+                            Fase già chiusa<span v-if="f.lotto_uscita"> — lotto {{ f.lotto_uscita }}</span>.
+                        </div>
+
+                        <div v-else class="pt-3">
                         <!-- Scelta modalità -->
                         <div v-if="f.permetti_da_stock" class="mb-3 flex flex-wrap gap-4 text-sm">
                             <label class="inline-flex items-center gap-2">
@@ -392,6 +442,7 @@ function invia() {
                                 </div>
                             </div>
                         </div>
+                    </div>
                     </div>
                 </div>
 
