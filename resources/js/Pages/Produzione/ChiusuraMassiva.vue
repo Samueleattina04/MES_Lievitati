@@ -52,23 +52,25 @@ const lottiPerArticolo = computed(() => {
 });
 
 // Propaga il lotto del semilavorato prodotto sulle righe-componente dei padri ANCORA VUOTE
-// (pre-compilazione modificabile: non sovrascrive un valore già digitato).
-watch(
-    lottiPerArticolo,
-    (map) => {
-        props.fasi.forEach((f) => {
-            f.materiali.forEach((m) => {
-                if (m.semilavorato) {
-                    const riga = stato[f.id].materiali[m.id].lotti[0];
-                    if (riga && (!riga.lotto || riga.lotto.trim() === '') && map[m.articolo]) {
-                        riga.lotto = map[m.articolo];
-                    }
-                }
-            });
+// (pre-compilazione modificabile: non sovrascrive un valore già digitato). Chiamata sia da un watch
+// (di sicurezza) sia direttamente dagli @input dei campi lotto, così scatta in modo affidabile.
+function propagaLotti() {
+    const map = lottiPerArticolo.value;
+    props.fasi.forEach((f) => {
+        f.materiali.forEach((m) => {
+            if (!m.semilavorato) {
+                return;
+            }
+            const ms = stato[f.id]?.materiali?.[m.id];
+            const riga = ms?.lotti?.[0];
+            if (riga && (!riga.lotto || riga.lotto.trim() === '') && map[m.articolo]) {
+                riga.lotto = map[m.articolo];
+            }
         });
-    },
-    { deep: true, immediate: true },
-);
+    });
+}
+
+watch(lottiPerArticolo, () => propagaLotti(), { deep: true, immediate: true });
 
 const sommaLotti = (faseId, matId) =>
     (stato[faseId].materiali[matId].lotti || []).reduce((acc, r) => acc + (parseFloat(r.quantita) || 0), 0);
@@ -202,6 +204,7 @@ function invia() {
                                 type="text"
                                 placeholder="Lotto già a sistema"
                                 class="w-72 rounded-lg border-gray-300 text-sm"
+                                @input="propagaLotti"
                             />
                             <!-- Lotti a giacenza su tutti i magazzini (change #2): click per selezionare. -->
                             <div v-if="f.lotti_stock && f.lotti_stock.length" class="mt-2 flex flex-wrap gap-2">
@@ -211,7 +214,7 @@ function invia() {
                                     type="button"
                                     class="rounded border border-indigo-200 bg-white px-2 py-1 text-xs hover:bg-indigo-100"
                                     :class="{ 'ring-2 ring-indigo-400': stato[f.id].lotto_stock === l.lotto }"
-                                    @click="stato[f.id].lotto_stock = l.lotto"
+                                    @click="stato[f.id].lotto_stock = l.lotto; propagaLotti()"
                                 >
                                     {{ l.lotto }} · mag.{{ l.magazzino }} · {{ Number(l.quantita).toFixed(3) }}
                                 </button>
@@ -298,6 +301,7 @@ function invia() {
                                         type="text"
                                         placeholder="Lotto in uscita"
                                         class="w-60 rounded-lg border-gray-300 text-sm"
+                                        @input="propagaLotti"
                                     />
                                 </div>
                                 <div>
