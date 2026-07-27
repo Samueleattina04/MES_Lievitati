@@ -52,11 +52,13 @@ final class EsportazioneService
     }
 
     /**
-     * Esporta un ordine COMPLETATO verso un gestionale: scrive il file (o uno ZIP se piu' tracciati)
-     * e marca l'ordine "esportato" (senza impedire l'export verso altri gestionali). Restituisce il
-     * percorso e i metadati del file da scaricare (il chiamante lo invia e lo elimina).
+     * Esporta un ordine COMPLETATO verso un gestionale e marca l'ordine "esportato" (senza impedire
+     * l'export verso altri gestionali). Un solo tracciato -> contenuto in streaming (NESSUNA scrittura
+     * su disco, quindi nessun problema di permessi); piu' tracciati -> ZIP in un file temporaneo di
+     * sistema (poi eliminato dal chiamante).
      *
-     * @return array{path:string, nome:string, mime:string}
+     * @return array{tipo:'contenuto', nome:string, mime:string, contenuto:string}
+     *              |array{tipo:'zip', nome:string, mime:string, path:string}
      */
     public function esporta(OrdineProduzione $ordine, string $gestionale, ?int $userId = null): array
     {
@@ -70,29 +72,35 @@ final class EsportazioneService
             throw new RuntimeException("Nessun tracciato configurato per il gestionale '{$gestionale}'.");
         }
 
-        $dir = storage_path('app/export');
-        if (! is_dir($dir)) {
-            mkdir($dir, 0775, true);
-        }
-
         if (count($files) === 1) {
-            // Un solo tracciato: si scarica direttamente il file (niente ZIP).
+            // Un solo tracciato: contenuto restituito direttamente, scaricato in streaming.
             $file = $files[0];
-            $path = $dir.DIRECTORY_SEPARATOR.$file['nome'];
-            file_put_contents($path, $file['contenuto']);
-            $risultato = ['path' => $path, 'nome' => $file['nome'], 'mime' => $file['mime']];
+            $risultato = [
+                'tipo' => 'contenuto',
+                'nome' => $file['nome'],
+                'mime' => $file['mime'],
+                'contenuto' => $file['contenuto'],
+            ];
         } else {
-            $nomeZip = "export_{$gestionale}_{$ordine->numero}.zip";
-            $path = $dir.DIRECTORY_SEPARATOR.$nomeZip;
+            // Piu' tracciati: ZIP in un file temporaneo di sistema (dir sempre scrivibile).
+            $path = tempnam(sys_get_temp_dir(), 'mesexport');
+            if ($path === false) {
+                throw new RuntimeException('Impossibile creare il file temporaneo di export.');
+            }
             $zip = new ZipArchive();
-            if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-                throw new RuntimeException('Impossibile creare il file di export.');
+            if ($zip->open($path, ZipArchive::OVERWRITE) !== true) {
+                throw new RuntimeException('Impossibile creare lo ZIP di export.');
             }
             foreach ($files as $file) {
                 $zip->addFromString($file['nome'], $file['contenuto']);
             }
             $zip->close();
-            $risultato = ['path' => $path, 'nome' => $nomeZip, 'mime' => 'application/zip'];
+            $risultato = [
+                'tipo' => 'zip',
+                'nome' => "export_{$gestionale}_{$ordine->numero}.zip",
+                'mime' => 'application/zip',
+                'path' => $path,
+            ];
         }
 
         if ($ordine->stato !== StatoOrdine::Esportato) {

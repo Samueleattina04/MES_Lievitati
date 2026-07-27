@@ -64,14 +64,13 @@ final class ExportTest extends TestCase
         $this->completa($ordine, $operatore);
         self::assertSame(StatoOrdine::Completato, $ordine->fresh()->stato);
 
-        // Esporta ESOLVER: file CSV singolo (non ZIP), marca "esportato".
+        // Esporta ESOLVER: contenuto CSV in streaming (nessun file su disco), marca "esportato".
         $file = $service->esporta($ordine->fresh(), 'esolver', $operatore->id);
-        self::assertFileExists($file['path']);
+        self::assertSame('contenuto', $file['tipo']);
         self::assertStringStartsWith('esolver_', $file['nome']);
         self::assertSame('text/csv', $file['mime']);
 
-        $csv = (string) file_get_contents($file['path']);
-        @unlink($file['path']);
+        $csv = (string) $file['contenuto'];
 
         // Nessun BOM; intestazione fissa; righe nel formato ESOLVER (causale 103, costanti 01;850;).
         self::assertFalse(str_starts_with($csv, "\xEF\xBB\xBF"), 'Il tracciato ESOLVER non deve avere il BOM.');
@@ -94,8 +93,8 @@ final class ExportTest extends TestCase
 
         // Ancora ri-esportabile anche da "Esportato" (ri-scaricabile / altri gestionali).
         $file = $service->esporta($ordine->fresh(), 'esolver', $operatore->id);
-        self::assertFileExists($file['path']);
-        @unlink($file['path']);
+        self::assertSame('contenuto', $file['tipo']);
+        self::assertNotEmpty($file['contenuto']);
 
         // Gestionale senza tracciato configurato (Omni): errore parlante, nessun file.
         try {
