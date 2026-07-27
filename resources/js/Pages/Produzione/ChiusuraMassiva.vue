@@ -203,6 +203,20 @@ function invia() {
                                 placeholder="Lotto già a sistema"
                                 class="w-72 rounded-lg border-gray-300 text-sm"
                             />
+                            <!-- Lotti a giacenza su tutti i magazzini (change #2): click per selezionare. -->
+                            <div v-if="f.lotti_stock && f.lotti_stock.length" class="mt-2 flex flex-wrap gap-2">
+                                <button
+                                    v-for="(l, i) in f.lotti_stock"
+                                    :key="i"
+                                    type="button"
+                                    class="rounded border border-indigo-200 bg-white px-2 py-1 text-xs hover:bg-indigo-100"
+                                    :class="{ 'ring-2 ring-indigo-400': stato[f.id].lotto_stock === l.lotto }"
+                                    @click="stato[f.id].lotto_stock = l.lotto"
+                                >
+                                    {{ l.lotto }} · mag.{{ l.magazzino }} · {{ Number(l.quantita).toFixed(3) }}
+                                </button>
+                            </div>
+                            <p v-else class="mt-1 text-xs text-gray-400">Nessun lotto a giacenza nei magazzini per questo articolo.</p>
                             <p class="mt-1 text-xs text-gray-500">La fase verrà chiusa senza consumare i componenti.</p>
                         </div>
 

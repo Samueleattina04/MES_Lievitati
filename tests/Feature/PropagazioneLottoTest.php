@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Enums\RuoloUtente;
 use App\Enums\StatoOrdine;
 use App\Models\FaseOrdine;
+use App\Models\MaterialeFase;
 use App\Models\OrdineProduzione;
 use App\Models\User;
 use App\Ordini\OrdineProduzioneService;
@@ -93,13 +94,35 @@ final class PropagazioneLottoTest extends TestCase
                 ->component('Operatore/Fase')
                 ->where('materiali', function ($materiali) {
                     $sem = collect($materiali)->firstWhere('articolo', 'IMPASTOCOLOMBE/PANETTONI');
+                    if ($sem === null) {
+                        return false;
+                    }
+                    // Il lotto propagato deve essere visibile: come consumo pre-registrato (change #1)
+                    // oppure come proposta. In entrambi i casi l'utente lo vede sulla riga.
+                    $lottiVisibili = collect($sem['proposta_fifo'])->pluck('lotto')
+                        ->merge(collect($sem['lotti'])->pluck('lotto'));
 
-                    return $sem !== null
-                        && (bool) $sem['semilavorato'] === true
-                        && (bool) $sem['flag_lotto'] === true
-                        && collect($sem['proposta_fifo'])->pluck('lotto')->contains('BASE-L1');
+                    return (bool) $sem['semilavorato'] === true && $lottiVisibili->contains('BASE-L1');
                 })
             );
+    }
+
+    public function test_chiusura_fase_riporta_il_lotto_sulle_fasi_successive(): void
+    {
+        $o = $this->creaOrdine();
+
+        // Chiudo l'impasto base col lotto BASE-L1.
+        $this->produci($this->fase($o, 'IMPASTOCOLOMBE/PANETTONI'), [], 'BASE-L1');
+
+        // Change #1: il lotto deve risultare gia' RIPORTATO (pre-registrato) sulla riga-componente
+        // della fase successiva che consuma quel semilavorato, senza doverlo reinserire.
+        $padre = $this->fase($o, 'IMPASTOTRADPIST/AN/ALB');
+        $materiale = MaterialeFase::where('fase_ordine_id', $padre->id)
+            ->where('articolo_codice', 'IMPASTOCOLOMBE/PANETTONI')->firstOrFail();
+
+        $consumo = $materiale->consumo()->with('lotti')->first();
+        self::assertNotNull($consumo, 'Alla chiusura del figlio, il consumo del semilavorato del padre deve essere pre-registrato.');
+        self::assertSame('BASE-L1', $consumo->lotti->first()?->lotto);
     }
 
     public function test_propagazione_a_catena_su_piu_livelli_mantiene_la_genealogia(): void

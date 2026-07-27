@@ -162,9 +162,9 @@ final class FaseWorkflowService
                 throw new WorkflowException('Fase con materiali gia confermati: non puo essere completata da stock.');
             }
 
-            // Il lotto deve essere gia' presente a sistema (§5.3): altrimenti non e' un prelievo da stock.
-            if ($this->lottoSemilavoratoSource !== null
-                && ! $this->lottoSemilavoratoSource->esisteLotto($fase->articolo_prodotto_codice, $lotto)) {
+            // Il lotto deve essere gia' presente a sistema (§5.3): storico lotti_prodotto OPPURE
+            // giacenza reale sul gestionale (qualunque magazzino, change #2). Altrimenti non e' stock.
+            if (! $this->lottoEsistente($fase->articolo_prodotto_codice, $lotto)) {
                 throw new WorkflowException(sprintf(
                     'Il lotto %s non risulta esistente a sistema per %s: impossibile prelevare da stock.',
                     $lotto, $fase->articolo_prodotto_codice,
@@ -205,6 +205,9 @@ final class FaseWorkflowService
                 ],
             );
 
+            // Riporta il lotto sulle righe-componente delle fasi successive (§5.3, change #1).
+            $this->propagaLottoAiPadri($fase, $lotto, $operatore);
+
             LogEventi::registra('fase_completata_da_stock', $fase, $operatore->id, [
                 'articolo' => $fase->articolo_prodotto_codice,
                 'lotto' => $lotto,
@@ -215,6 +218,75 @@ final class FaseWorkflowService
 
             return $fase;
         });
+    }
+
+    /**
+     * Un lotto e' "esistente a sistema" se e' gia' registrato in lotti_prodotto (storico MES) oppure
+     * se risulta a giacenza sul gestionale su un qualunque magazzino (change #2).
+     */
+    private function lottoEsistente(string $articolo, string $lotto): bool
+    {
+        $lotto = trim($lotto);
+
+        if ($this->lottoSemilavoratoSource !== null
+            && $this->lottoSemilavoratoSource->esisteLotto($articolo, $lotto)) {
+            return true;
+        }
+
+        if ($this->stock !== null) {
+            foreach ($this->stock->lottiTuttiMagazzini($articolo) as $l) {
+                if (trim((string) ($l['lotto'] ?? '')) === $lotto) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Propaga il lotto prodotto/prelevato di una fase sulle righe-componente semilavorato delle fasi
+     * padre che lo consumano, pre-registrando il consumo (§5.3, change #1). Cosi', nelle fasi
+     * successive, il lotto compare gia' inserito senza doverlo digitare di nuovo. Non sovrascrive un
+     * consumo gia' registrato (eventuale correzione manuale).
+     */
+    private function propagaLottoAiPadri(FaseOrdine $fase, ?string $lotto, User $operatore): void
+    {
+        $lotto = $lotto !== null ? trim($lotto) : '';
+        if ($lotto === '') {
+            return;
+        }
+
+        $materialiPadre = MaterialeFase::where('fase_produttrice_id', $fase->id)
+            ->where('e_semilavorato', true)
+            ->where('articolo_codice', $fase->articolo_prodotto_codice)
+            ->get();
+
+        foreach ($materialiPadre as $materiale) {
+            // Rispetta un consumo gia' inserito (magari corretto a mano).
+            if ($materiale->consumo()->exists()) {
+                continue;
+            }
+
+            $qta = (float) $materiale->quantita_pianificata;
+            $consumo = ConsumoMateriale::updateOrCreate(
+                ['materiale_fase_id' => $materiale->id],
+                [
+                    'quantita_effettiva' => $qta,
+                    'confermato_da_id' => $operatore->id,
+                    'confermato_at' => now(),
+                ],
+            );
+            $consumo->lotti()->delete();
+            $consumo->lotti()->create(['lotto' => $lotto, 'quantita' => $qta]);
+
+            LogEventi::registra('materiale_confermato', $materiale, $operatore->id, [
+                'articolo' => $materiale->articolo_codice,
+                'pianificata' => $qta,
+                'nuovo' => ['quantita' => $qta, 'lotti' => [['lotto' => $lotto, 'quantita' => $qta]]],
+                'auto_propagato' => true,
+            ]);
+        }
     }
 
     /**
@@ -507,6 +579,9 @@ final class FaseWorkflowService
                         ],
                     );
                 }
+
+                // Riporta il lotto in uscita sulle righe-componente delle fasi successive (§5.3, change #1).
+                $this->propagaLottoAiPadri($fase, $lottoProdotto, $operatore);
 
                 LogEventi::registra('fase_chiusa', $fase, $operatore->id, [
                     'quantita_prodotta' => $qtaProdotta,

@@ -231,6 +231,26 @@ const chiudi = () =>
                         Completa da stock
                     </button>
                 </div>
+
+                <!-- Lotti realmente a giacenza su tutti i magazzini (change #2): tap per selezionare. -->
+                <div v-if="fase.lotti_stock && fase.lotti_stock.length" class="mt-3">
+                    <p class="mb-1 text-xs text-slate-400">Disponibili a magazzino (tap per usarli):</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button
+                            v-for="(l, i) in fase.lotti_stock"
+                            :key="i"
+                            type="button"
+                            class="rounded-lg bg-slate-700 px-3 py-2 text-sm active:bg-slate-600"
+                            :class="{ 'ring-2 ring-indigo-400': lottoStock.trim() === l.lotto }"
+                            @click="lottoStock = l.lotto"
+                        >
+                            {{ l.lotto }} · mag.{{ l.magazzino }} · {{ Number(l.quantita).toFixed(3) }} {{ fase.udm }}
+                        </button>
+                    </div>
+                </div>
+                <p v-else class="mt-2 text-xs text-slate-500">
+                    Nessun lotto a giacenza nei magazzini per questo articolo: inseriscilo a mano.
+                </p>
             </div>
         </div>
 

@@ -4,16 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
-use App\Enums\RuoloUtente;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreOrdineRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        $ruolo = $this->user()?->ruolo;
-
-        return $ruolo === RuoloUtente::Pianificazione || $ruolo === RuoloUtente::Admin;
+        // Gestione ordini: Pianificazione + Admin + Backoffice (change #3). Fonte unica: RuoloUtente.
+        return (bool) $this->user()?->ruolo?->puoGestireOrdini();
     }
 
     /**

@@ -102,6 +102,7 @@ class ChiusuraController extends Controller
                 // Ogni fase e' un nodo prodotto (ha una sua distinta): e' sempre prelevabile da stock,
                 // a prescindere dal flag lotto della sua anagrafica (§5.3, change #3).
                 'permetti_da_stock' => true,
+                'lotti_stock' => $this->stock->lottiTuttiMagazzini($f->articolo_prodotto_codice),
                 'lotto_uscita' => $f->lottiProdotto->first()?->lotto,
                 'reparti' => $f->steps->map(fn ($s) => $s->reparto?->descrizione)->filter()->values(),
                 'materiali' => $f->materiali->map(fn (MaterialeFase $m) => $this->materialePerUi($m))->values(),

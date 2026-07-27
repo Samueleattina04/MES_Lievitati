@@ -48,10 +48,10 @@ enum RuoloUtente: string
         return $this === self::Admin;
     }
 
-    /** Creare/gestire/cancellare ordini di produzione. */
+    /** Creare/gestire/cancellare ordini di produzione (Backoffice incluso su richiesta, change #3). */
     public function puoGestireOrdini(): bool
     {
-        return in_array($this, [self::Admin, self::Pianificazione], true);
+        return in_array($this, [self::Admin, self::Pianificazione, self::Backoffice], true);
     }
 
     /** Esportare i tracciati (pulsante export). */

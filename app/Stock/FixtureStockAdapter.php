@@ -69,4 +69,15 @@ final class FixtureStockAdapter implements StockSourceAdapterInterface
 
         return $out;
     }
+
+    public function lottiTuttiMagazzini(string $codiceArticolo): array
+    {
+        // In dev i fixture rappresentano il solo mag. 06 (salvo 'magazzino' esplicito nel dato).
+        $mag = (string) ($this->dati[$codiceArticolo]['magazzino'] ?? '06');
+
+        return array_map(
+            static fn (StockLotto $l) => ['magazzino' => $mag, 'lotto' => $l->lotto, 'quantita' => $l->quantita],
+            $this->lottiDisponibiliFifo($codiceArticolo),
+        );
+    }
 }

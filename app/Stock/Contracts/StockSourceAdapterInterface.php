@@ -29,4 +29,13 @@ interface StockSourceAdapterInterface
      * @return list<\App\Stock\StockLotto>
      */
     public function lottiDisponibiliFifo(string $codiceArticolo): array;
+
+    /**
+     * Lotti disponibili su TUTTI i magazzini per l'articolo (giacenza > 0), con indicazione del
+     * magazzino. Usato dal "preleva da stock" per mostrare dove sono le scorte di un semilavorato/
+     * prodotto (§5.3, change #2). Ordinati per magazzino e poi FIFO.
+     *
+     * @return list<array{magazzino:string, lotto:string, quantita:float}>
+     */
+    public function lottiTuttiMagazzini(string $codiceArticolo): array;
 }

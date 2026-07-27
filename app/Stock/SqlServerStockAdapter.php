@@ -81,6 +81,70 @@ final class SqlServerStockAdapter implements StockSourceAdapterInterface
             rifFifo: $r->rif ?? null,
         ), $rows);
 
+        return $this->ordinaFifo($lotti);
+    }
+
+    public function lottiTuttiMagazzini(string $codiceArticolo): array
+    {
+        $tab = $this->ident($this->config['tabella_lotti']);
+        $colCod = $this->ident($this->config['col_codice_articolo']);
+        $colMag = $this->ident($this->config['col_magazzino']);
+        $colLotto = $this->ident($this->config['col_lotto']);
+        $colGiac = $this->ident($this->config['col_giacenza_lotto']);
+
+        // Tutti i magazzini (nessun filtro su CodMag), solo lotti con giacenza.
+        $rows = $this->connection->select(
+            "SELECT {$colMag} AS magazzino, {$colLotto} AS lotto, {$colGiac} AS qta
+             FROM {$tab} WITH (NOLOCK)
+             WHERE {$colCod} = ? AND {$colGiac} > 0",
+            [$codiceArticolo],
+        );
+
+        // Aggrega per (magazzino, lotto) sommando le giacenze.
+        $out = [];
+        $idx = [];
+        foreach ($rows as $r) {
+            $mag = (string) $r->magazzino;
+            $lot = (string) $r->lotto;
+            $k = $mag.'|'.$lot;
+            if (isset($idx[$k])) {
+                $out[$idx[$k]]['quantita'] += (float) $r->qta;
+            } else {
+                $idx[$k] = count($out);
+                $out[] = ['magazzino' => $mag, 'lotto' => $lot, 'quantita' => (float) $r->qta];
+            }
+        }
+
+        // Ordina per magazzino e, all'interno, in ottica FIFO dal codice lotto (se attivo).
+        $fifoDaCodice = (bool) ($this->config['fifo_da_codice_lotto'] ?? false);
+        usort($out, static function (array $a, array $b) use ($fifoDaCodice): int {
+            $m = strcmp($a['magazzino'], $b['magazzino']);
+            if ($m !== 0) {
+                return $m;
+            }
+            if ($fifoDaCodice) {
+                return LottoFifoParser::confronta(
+                    LottoFifoParser::chiave($a['lotto']),
+                    LottoFifoParser::chiave($b['lotto']),
+                );
+            }
+
+            return strcmp($a['lotto'], $b['lotto']);
+        });
+
+        return $out;
+    }
+
+    /**
+     * Ordina i lotti del mag. 06 in ottica FIFO dal codice lotto (se attivo), altrimenti lascia
+     * l'ordine SQL sul campo FIFO. I lotti fuori formato restano in coda (usort stabile su PHP 8).
+     *
+     * @param  list<StockLotto>  $lotti
+     * @return list<StockLotto>
+     */
+    private function ordinaFifo(array $lotti): array
+    {
+
         // FIFO dal codice lotto (§5.2): l'ordine cronologico reale e' codificato nel codice lotto,
         // non nei campi del gestionale. Riordina dal piu' vecchio al piu' recente; i lotti fuori
         // formato (es. fornitori esterni) restano in coda nell'ordine SQL di partenza (usort stabile).

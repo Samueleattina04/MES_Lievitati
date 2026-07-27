@@ -48,14 +48,15 @@ final class RuoloAccessoTest extends TestCase
         $this->actingAs($this->u(RuoloUtente::Operatore))->get(route('admin.index'))->assertForbidden();
     }
 
-    public function test_gestione_ordini_solo_pianificazione_e_admin(): void
+    public function test_gestione_ordini_pianificazione_admin_e_backoffice(): void
     {
-        $this->actingAs($this->u(RuoloUtente::Pianificazione))->get(route('ordini.index'))->assertOk();
-        $this->actingAs($this->u(RuoloUtente::Admin))->get(route('ordini.index'))->assertOk();
+        // Change #3: anche il Backoffice puo' creare/gestire ordini (oltre a Pianificazione e Admin).
+        foreach ([RuoloUtente::Pianificazione, RuoloUtente::Admin, RuoloUtente::Backoffice] as $r) {
+            $this->actingAs($this->u($r))->get(route('ordini.index'))->assertOk();
+            $this->actingAs($this->u($r))->get(route('ordini.create'))->assertOk();
+        }
 
-        // Backoffice NON gestisce ordini (solo dashboard + export).
-        $this->actingAs($this->u(RuoloUtente::Backoffice))->get(route('ordini.index'))->assertForbidden();
-        $this->actingAs($this->u(RuoloUtente::Backoffice))->get(route('ordini.create'))->assertForbidden();
+        // L'operatore resta escluso dalla gestione ordini.
         $this->actingAs($this->u(RuoloUtente::Operatore))->get(route('ordini.index'))->assertForbidden();
     }
 

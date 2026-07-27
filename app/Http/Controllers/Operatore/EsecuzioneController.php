@@ -118,6 +118,8 @@ class EsecuzioneController extends Controller
         // Prelievo da stock (§5.3): ogni fase e' un nodo prodotto, quindi e' prelevabile da stock
         // finche' non e' avviata, a prescindere dal flag lotto della sua anagrafica.
         $permettiDaStock = $fase->stato->value === 'da_lavorare';
+        // Lotti del semilavorato/prodotto presenti a giacenza su TUTTI i magazzini (change #2).
+        $lottiStock = $permettiDaStock ? $this->stock->lottiTuttiMagazzini($fase->articolo_prodotto_codice) : [];
 
         return Inertia::render('Operatore/Fase', [
             'step' => [
@@ -143,6 +145,7 @@ class EsecuzioneController extends Controller
                 'lotto_uscita' => $lottoUscita?->lotto,
                 'completata_da_stock' => $fase->completata_da_stock,
                 'permetti_da_stock' => $permettiDaStock,
+                'lotti_stock' => $lottiStock,
                 'steps' => $fase->steps->map(fn ($s) => [
                     'reparto' => $s->reparto?->descrizione,
                     'ordine' => $s->ordine,
