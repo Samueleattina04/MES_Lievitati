@@ -338,14 +338,11 @@ final class FaseWorkflowService
             }
         }
 
-        // Verifica giacenza sul mag. 06 (§5.1). I lotti inseriti a mano NON attivano il blocco.
+        // Verifica giacenza sul mag. 06 (§5.1): blocca su QUALSIASI articolo se la quantita' confermata
+        // supera la giacenza disponibile, anche con lotti inseriti a mano. Nessun override possibile.
         $this->controllaGiacenza($materiale, $quantitaEffettiva, $lotti);
 
-        // Avviso soft (non bloccante): lotto manuale con quantita' oltre la giacenza TOTALE nota.
-        // La conferma aggiuntiva e' gattata dal client; qui registriamo l'evento per tracciabilita'.
-        $superamento = $this->rilevaSuperamentoTotale($materiale, $quantitaEffettiva, $lotti);
-
-        return DB::transaction(function () use ($materiale, $quantitaEffettiva, $operatore, $lotti, $clientUuid, $precedente, $superamento, $confermaSuperamento) {
+        return DB::transaction(function () use ($materiale, $quantitaEffettiva, $operatore, $lotti, $clientUuid, $precedente) {
             $consumo = ConsumoMateriale::updateOrCreate(
                 ['materiale_fase_id' => $materiale->id],
                 [
@@ -383,27 +380,18 @@ final class FaseWorkflowService
                 'nuovo' => $nuovoStato,
             ]);
 
-            // Tracciabilita' dell'avviso di superamento giacenza totale su lotto manuale (non bloccante).
-            if ($superamento !== null) {
-                LogEventi::registra('materiale_superamento_giacenza', $materiale, $operatore->id, [
-                    'articolo' => $materiale->articolo_codice,
-                    'quantita' => $quantitaEffettiva,
-                    'giacenza_totale_nota' => $superamento['giacenza_totale'],
-                    'lotti_manuali' => $superamento['lotti_manuali'],
-                    'confermato_esplicitamente' => $confermaSuperamento,
-                ]);
-            }
-
             return $consumo;
         });
     }
 
     /**
-     * Blocco per giacenza insufficiente sul mag. 06 (§5.1):
-     *  - articolo NON a lotto: quantita' confermata <= giacenza articolo sul mag. 06;
-     *  - articolo a lotto: per ogni riga il cui lotto E' presente sul mag. 06, la quantita' assegnata
-     *    non puo' superare la giacenza di quel lotto. I lotti inseriti a mano (assenti dal mag. 06)
-     *    NON attivano il blocco.
+     * Blocco per giacenza insufficiente sul mag. 06 (§5.1). Vale per QUALSIASI articolo:
+     *  1) livello articolo: la quantita' confermata non puo' superare la giacenza dell'articolo sul
+     *     mag. 06. Cosi' anche i lotti digitati a mano non permettono di consumare piu' del disponibile.
+     *  2) rifinitura per articolo a lotto: nessuna riga puo' superare la giacenza del proprio lotto sul
+     *     mag. 06 (per i lotti effettivamente presenti sul 06).
+     * I semilavorati prodotti internamente sono esclusi: non stanno a magazzino, la loro disponibilita'
+     * e' governata dalla fase produttrice (precedenze/split).
      *
      * @param list<array{lotto:string, quantita:float|int|string}> $lotti
      */
@@ -413,36 +401,39 @@ final class FaseWorkflowService
             return;
         }
 
-        // I semilavorati prodotti internamente non stanno sul mag. 06: la loro disponibilita' e'
-        // governata dalla fase produttrice (precedenze/split), non dalla giacenza di magazzino.
         if ($materiale->e_semilavorato) {
             return;
         }
 
         $codice = $materiale->articolo_codice;
 
-        if (! $materiale->flag_lotto) {
-            $disponibile = $this->stock->giacenzaArticolo($codice);
-            if ($quantitaEffettiva > $disponibile + 1e-9) {
-                throw new WorkflowException(sprintf(
-                    'Giacenza mag. 06 insufficiente per %s: richiesti %s, disponibili %s.',
-                    $codice, $this->fmt($quantitaEffettiva), $this->fmt($disponibile),
-                ));
-            }
+        // 1) Blocco a livello articolo (qualsiasi articolo, a lotto o no).
+        $disponibileArticolo = $this->stock->giacenzaArticolo($codice);
+        if ($quantitaEffettiva > $disponibileArticolo + 1e-9) {
+            throw new WorkflowException(sprintf(
+                'Giacenza mag. 06 insufficiente per %s: richiesti %s, disponibili %s.',
+                $codice, $this->fmt($quantitaEffettiva), $this->fmt($disponibileArticolo),
+            ));
+        }
 
+        if (! $materiale->flag_lotto) {
             return;
         }
 
-        // Giacenza per lotto sul mag. 06 (aggregata per codice lotto).
+        // 2) Rifinitura per lotto: la quantita' assegnata a ciascun lotto presente sul mag. 06 non puo'
+        //    superarne la giacenza. Aggrega le richieste per codice lotto (l'operatore puo' ripeterlo).
         $dispPerLotto = [];
         foreach ($this->stock->lottiDisponibiliFifo($codice) as $l) {
             $dispPerLotto[$l->lotto] = ($dispPerLotto[$l->lotto] ?? 0.0) + $l->quantita;
         }
 
+        $richiestaPerLotto = [];
         foreach ($lotti as $riga) {
             $lotto = trim((string) $riga['lotto']);
-            $qta = (float) $riga['quantita'];
-            // Solo i lotti del mag. 06 sono soggetti al blocco; quelli manuali passano (§5.1).
+            $richiestaPerLotto[$lotto] = ($richiestaPerLotto[$lotto] ?? 0.0) + (float) $riga['quantita'];
+        }
+
+        foreach ($richiestaPerLotto as $lotto => $qta) {
             if (array_key_exists($lotto, $dispPerLotto) && $qta > $dispPerLotto[$lotto] + 1e-9) {
                 throw new WorkflowException(sprintf(
                     'Giacenza mag. 06 insufficiente per il lotto %s di %s: richiesti %s, disponibili %s.',
@@ -455,44 +446,6 @@ final class FaseWorkflowService
     private function fmt(float $valore): string
     {
         return rtrim(rtrim(number_format($valore, 6, '.', ''), '0'), '.');
-    }
-
-    /**
-     * Rileva il superamento della giacenza TOTALE nota (tutti i magazzini) quando sono coinvolti
-     * lotti INSERITI MANUALMENTE (non presenti sul mag. 06). NON blocca: restituisce i dati per il
-     * log/avviso, oppure null se la condizione non si applica.
-     *
-     * @param list<array{lotto:string, quantita:float|int|string}> $lotti
-     * @return array{giacenza_totale:float, lotti_manuali:list<string>}|null
-     */
-    private function rilevaSuperamentoTotale(MaterialeFase $materiale, float $quantitaEffettiva, array $lotti): ?array
-    {
-        if ($this->stock === null || ! $materiale->flag_lotto || $materiale->e_semilavorato) {
-            return null;
-        }
-
-        // Codici lotto presenti sul mag. 06: gli altri sono "manuali".
-        $mag06 = [];
-        foreach ($this->stock->lottiDisponibiliFifo($materiale->articolo_codice) as $l) {
-            $mag06[$l->lotto] = true;
-        }
-        $manuali = [];
-        foreach ($lotti as $riga) {
-            $lotto = trim((string) $riga['lotto']);
-            if ($lotto !== '' && ! isset($mag06[$lotto])) {
-                $manuali[] = $lotto;
-            }
-        }
-        if ($manuali === []) {
-            return null; // nessun lotto manuale: nessun avviso (i lotti del 06 seguono il blocco §5.1)
-        }
-
-        $totale = $this->stock->giacenzaTotale($materiale->articolo_codice);
-        if ($quantitaEffettiva <= $totale + 1e-9) {
-            return null; // entro la giacenza totale nota: nessun avviso
-        }
-
-        return ['giacenza_totale' => $totale, 'lotti_manuali' => array_values(array_unique($manuali))];
     }
 
     /**

@@ -170,7 +170,7 @@ cast `dati` → array; relazioni `user()`, `soggetto()` (morphTo).
     `tuttiStepChiusi()`.
   - `FaseWorkflowService`: `avvia()`, `completaDaStock()`, `confermaMateriale()`, `chiudiStep()` (con
     `DB::transaction` e `lockForUpdate`), più `contesto()`, `stepAvviabile()`, `motivoBlocco()`,
-    `controllaGiacenza()`, `rilevaSuperamentoTotale()`, `verificaCompletamentoOrdine()`. Costruttore
+    `controllaGiacenza()`, `chiudiFaseDiretta()`, `verificaCompletamentoOrdine()`. Costruttore
     con `?LottoSemilavoratoSourceInterface` per riconoscere i lotti esistenti (change #3).
   - `ChiusuraMassivaService::chiudiOrdine()` — chiusura in blocco di tutte le fasi di un ordine
     (change #4): ordina le fasi bottom-up (topologico su `fasiFiglie`), per ciascuna produce
@@ -253,11 +253,12 @@ opera su qualunque step (change #1).
 - `completaDaStock()` → `FaseWorkflowService::completaDaStock()`: vedi §5.11.
 - `confermaMateriale()` → `FaseWorkflowService::confermaMateriale()`: blocca se la fase è `Chiusa`;
   se `flag_lotto` richiede ≥1 lotto e verifica somma lotti vs quantità (`Tolleranza::entro()`);
-  `controllaGiacenza()` (articolo non-lotto: quantità ≤ `giacenzaArticolo`; a lotto: per i lotti presenti
-  sul mag. 06 la quantità ≤ giacenza del lotto; lotti non presenti sul 06 non bloccano; semilavorati
-  esclusi); `rilevaSuperamentoTotale()` produce un record di log se un lotto manuale porta la quantità
-  oltre `giacenzaTotale`; scrive `ConsumoMateriale` + righe lotto; logga `materiale_confermato` o
-  `materiale_modificato` (con `precedente`/`nuovo`) e, se applicabile, `materiale_superamento_giacenza`.
+  `controllaGiacenza()` **blocca su QUALSIASI articolo** se la quantità supera la giacenza sul mag. 06:
+  (1) livello articolo — quantità ≤ `giacenzaArticolo` (vale anche per i lotti digitati a mano, che non
+  aggirano più il blocco); (2) rifinitura per-lotto — per i lotti presenti sul 06, quantità della riga ≤
+  giacenza di quel lotto. Nessun override possibile; i semilavorati interni sono esclusi (disponibilità
+  governata dalla fase produttrice). Scrive `ConsumoMateriale` + righe lotto; logga `materiale_confermato`
+  o `materiale_modificato` (con `precedente`/`nuovo`).
 - `chiudi()` → `FaseWorkflowService::chiudiStep()`: se lo step consuma materiali, richiede che tutti i
   materiali siano confermati e che i componenti a lotto abbiano righe lotto; chiude lo step; se tutti gli
   step sono chiusi (`FaseGate::tuttiStepChiusi()`) chiude la fase, richiede il lotto di uscita se
@@ -479,10 +480,11 @@ Cartella `tests/`. Configurazione in `phpunit.xml`: connessione `mysql`, DB `mes
   - `config/mes.php` e `SqlServerStockAdapter` segnalano che l'ordinamento FIFO usa `RifLottoNum`
     come proxy "provvisorio", in attesa di conferma del campo cronologico dal gestionale.
   - `config/mes.php` contiene commenti `TODO-DECISIONE` su tolleranza e `split_scope`.
-- **Gestione conferma superamento giacenza**: la seconda conferma per i lotti manuali oltre la giacenza
-  totale è gattata lato client (`window.confirm` in `Operatore/Fase.vue`); il server
-  (`FaseWorkflowService::confermaMateriale`) non blocca e si limita a registrare l'evento con il flag
-  `confermato_esplicitamente`. Non esiste un'imposizione lato server della conferma.
+- **Blocco giacenza (aggiornato)**: la giacenza insufficiente sul mag. 06 è **bloccata lato server per
+  qualsiasi articolo** (`FaseWorkflowService::controllaGiacenza`), inclusi i lotti digitati a mano; non
+  esiste più il "superamento con conferma" (rimossi `rilevaSuperamentoTotale`, l'evento
+  `materiale_superamento_giacenza` e il relativo `window.confirm` in `Operatore/Fase.vue`). Il parametro
+  `confermaSuperamento` di `confermaMateriale()` resta nella firma per compatibilità ma è ignorato.
 - **Frontend Tailwind**: `package.json` include sia `tailwindcss ^3.2.1` (con `postcss.config.js` e
   `tailwind.config.js`) sia `@tailwindcss/vite ^4.0.0`, ma `vite.config.js` registra solo i plugin
   `laravel` e `vue` (nessun plugin `@tailwindcss/vite`).
@@ -496,7 +498,7 @@ Cartella `tests/`. Configurazione in `phpunit.xml`: connessione `mysql`, DB `mes
   `{ stato: 'ok' | 'errore' | 'accodata' }` e mappa `r.permanente` su `stato: 'errore'`;
   `SyncController::processaAzione()` restituisce per azione `ok`, `duplicato`, oppure `ok:false` con
   `permanente` true/false ed `errore`. Non esiste alcun esito `conferma_richiesta` (nessuna occorrenza
-  in `sync.js` né in `SyncController`): il passaggio di conferma per il superamento della giacenza
-  totale è gestito unicamente lato client in `Operatore/Fase.vue`.
+  in `sync.js` né in `SyncController`). La giacenza insufficiente è ora un errore di conferma
+  (`WorkflowException`) restituito come esito di errore, non più un avviso lato client.
 - **Riferimenti a sezioni `§`**: molti commenti citano numeri di sezione di un documento esterno non
   incluso nel repository; non sono verificabili dal solo codice.

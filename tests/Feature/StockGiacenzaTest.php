@@ -19,8 +19,8 @@ use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
 
 /**
- * Test Fase Stock/FIFO (§5, §8, criterio 12.6): blocco giacenza mag.06, bypass lotto manuale,
- * proposta FIFO, chiusura bloccata senza lotto obbligatorio. Richiede DB (gira sul server).
+ * Test Fase Stock/FIFO (§5, §8, criterio 12.6): blocco giacenza mag.06 su QUALSIASI articolo (anche
+ * con lotti digitati a mano), proposta FIFO, chiusura bloccata senza lotto obbligatorio. Richiede DB.
  */
 final class StockGiacenzaTest extends TestCase
 {
@@ -69,14 +69,28 @@ final class StockGiacenzaTest extends TestCase
         $this->wf()->confermaMateriale($this->materiale('ACQUA'), 10.0, $this->op, []);
     }
 
-    public function test_lotto_manuale_non_attiva_il_blocco(): void
+    public function test_lotto_manuale_blocca_se_supera_la_giacenza_articolo(): void
     {
-        // Nessun lotto sul mag.06 per ZUCCHERO-SEM: il lotto inserito a mano deve passare (§5.1).
+        // Nessuna giacenza sul mag.06 per ZUCCHERO-SEM (default 0): un lotto inserito a mano NON deve
+        // piu' aggirare il blocco. 4 richiesti su 0 disponibili -> bloccato (change: qualsiasi articolo).
         $this->stock([], 0.0);
 
-        $consumo = $this->wf()->confermaMateriale(
+        $this->expectException(WorkflowException::class);
+        $this->wf()->confermaMateriale(
             $this->materiale('ZUCCHERO-SEM'), 4.0, $this->op,
             [['lotto' => 'MANUALE-1', 'quantita' => 4.0]],
+        );
+    }
+
+    public function test_lotto_manuale_entro_la_giacenza_articolo_non_blocca(): void
+    {
+        // L'operatore puo' comunque indicare un lotto a mano, purche' la quantita' rientri nella
+        // giacenza dell'articolo sul mag.06 (qui 100): il lotto non e' fra quelli del 06 ma passa.
+        $this->stock(['ZUCCHERO-SEM' => ['giacenza' => 100.0, 'lotti' => []]], 0.0);
+
+        $consumo = $this->wf()->confermaMateriale(
+            $this->materiale('ZUCCHERO-SEM'), 10.0, $this->op,
+            [['lotto' => 'MANUALE-1', 'quantita' => 10.0]],
         );
 
         self::assertNotNull($consumo);
@@ -85,8 +99,21 @@ final class StockGiacenzaTest extends TestCase
 
     public function test_blocco_su_lotto_del_mag06_oltre_la_disponibilita(): void
     {
-        // Il lotto L1 esiste sul mag.06 con soli 3: chiederne 10 deve bloccare.
-        $this->stock(['ZUCCHERO-SEM' => ['lotti' => [['lotto' => 'L1', 'quantita' => 3.0, 'rif_fifo' => 1]]]], 0.0);
+        // Articolo con giacenza ampia (100) ma lotto L1 con soli 3: chiederne 10 su L1 deve bloccare
+        // per la rifinitura per-lotto, anche se la giacenza articolo basterebbe.
+        $this->stock(['ZUCCHERO-SEM' => ['giacenza' => 100.0, 'lotti' => [['lotto' => 'L1', 'quantita' => 3.0, 'rif_fifo' => 1]]]], 0.0);
+
+        $this->expectException(WorkflowException::class);
+        $this->wf()->confermaMateriale(
+            $this->materiale('ZUCCHERO-SEM'), 10.0, $this->op,
+            [['lotto' => 'L1', 'quantita' => 10.0]],
+        );
+    }
+
+    public function test_blocco_a_livello_articolo_anche_col_lotto_del_mag06(): void
+    {
+        // Giacenza articolo insufficiente (5): anche indicando il lotto del mag.06, 10 > 5 deve bloccare.
+        $this->stock(['ZUCCHERO-SEM' => ['giacenza' => 5.0, 'lotti' => [['lotto' => 'L1', 'quantita' => 5.0, 'rif_fifo' => 1]]]], 0.0);
 
         $this->expectException(WorkflowException::class);
         $this->wf()->confermaMateriale(
@@ -153,38 +180,4 @@ final class StockGiacenzaTest extends TestCase
             );
     }
 
-    public function test_avviso_superamento_totale_su_lotto_manuale_logga_e_non_blocca(): void
-    {
-        // Giacenza totale nota = 2, nessun lotto sul mag.06: il lotto e' manuale.
-        $this->stock(['ZUCCHERO-SEM' => ['giacenza_totale' => 2.0, 'lotti' => []]], 0.0);
-        $zucchero = $this->materiale('ZUCCHERO-SEM');
-
-        // 10 > 2 con lotto manuale: NON blocca, ma registra l'evento (con conferma esplicita).
-        $consumo = $this->wf()->confermaMateriale($zucchero, 10.0, $this->op, [['lotto' => 'MAN-1', 'quantita' => 10.0]], null, true);
-
-        self::assertNotNull($consumo);
-        $log = \App\Models\LogEvento::where('tipo_evento', 'materiale_superamento_giacenza')->latest('id')->first();
-        self::assertNotNull($log);
-        self::assertTrue((bool) $log->dati['confermato_esplicitamente']);
-        self::assertEqualsWithDelta(2.0, (float) $log->dati['giacenza_totale_nota'], 1e-9);
-        self::assertContains('MAN-1', $log->dati['lotti_manuali']);
-    }
-
-    public function test_nessun_avviso_se_entro_la_giacenza_totale(): void
-    {
-        $this->stock(['ZUCCHERO-SEM' => ['giacenza_totale' => 100.0, 'lotti' => []]], 0.0);
-        $this->wf()->confermaMateriale($this->materiale('ZUCCHERO-SEM'), 10.0, $this->op, [['lotto' => 'MAN-1', 'quantita' => 10.0]], null, false);
-
-        self::assertSame(0, \App\Models\LogEvento::where('tipo_evento', 'materiale_superamento_giacenza')->count());
-    }
-
-    public function test_nessun_avviso_se_il_lotto_e_del_mag06(): void
-    {
-        // Lotto L1 presente sul mag.06 con giacenza ampia: NON e' manuale -> nessun avviso di superamento
-        // (i lotti del mag.06 seguono il blocco §5.1, non questo avviso), anche se la "giacenza_totale" e' bassa.
-        $this->stock(['ZUCCHERO-SEM' => ['giacenza_totale' => 2.0, 'lotti' => [['lotto' => 'L1', 'quantita' => 100.0, 'rif_fifo' => 1]]]], 0.0);
-        $this->wf()->confermaMateriale($this->materiale('ZUCCHERO-SEM'), 10.0, $this->op, [['lotto' => 'L1', 'quantita' => 10.0]], null, false);
-
-        self::assertSame(0, \App\Models\LogEvento::where('tipo_evento', 'materiale_superamento_giacenza')->count());
-    }
 }
