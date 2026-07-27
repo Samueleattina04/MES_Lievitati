@@ -140,6 +140,23 @@ final class ChiusuraMassivaTest extends TestCase
         self::assertSame(StatoOrdine::Completato, $o->fresh()->stato);
     }
 
+    public function test_chiusura_massiva_chiude_anche_una_fase_senza_step_configurati(): void
+    {
+        // Simula un articolo NON configurato a reparto/tipo-fase: la fase non ha step. In chiusura
+        // massiva deve comunque chiudersi (registrando consumi + lotto), senza lasciare l'ordine
+        // "da compilare" in silenzio (§8).
+        $o = $this->creaOrdine('PAN0104', 10);
+        $faseSenzaStep = $this->fase($o, 'PANPIST/ANANAS/ALB750');
+        $faseSenzaStep->steps()->delete();
+        self::assertSame(0, $faseSenzaStep->fresh()->steps()->count());
+
+        $this->chiusura->chiudiOrdine($o, $this->buildMap($o), $this->backoffice);
+
+        self::assertSame(StatoOrdine::Completato, $o->fresh()->stato);
+        self::assertSame(StatoFase::Chiusa, $faseSenzaStep->fresh()->stato);
+        self::assertSame(0, FaseOrdine::where('ordine_id', $o->id)->where('stato', '!=', StatoFase::Chiusa->value)->count());
+    }
+
     public function test_chiusura_massiva_gestisce_il_nodo_condiviso_con_split_automatico(): void
     {
         // ASSPAN01 contiene il nodo condiviso IMPASTOCOLOMBE/PANETTONI (consumato da due gusti).

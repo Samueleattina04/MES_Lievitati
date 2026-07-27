@@ -328,6 +328,14 @@ transazione (rollback totale su `WorkflowException`, con messaggio contestualizz
 reparto). Le fasi già chiuse vengono saltate (idempotenza), quindi la chiusura massiva funziona anche
 su ordini parzialmente avanzati.
 
+**Fasi senza step configurati (articolo non mappato a reparto/tipo-fase).** Un nodo prodotto il cui
+articolo non ha configurazione (`Reparti: n/d`) non genera step. In chiusura massiva la fase viene
+comunque chiusa tramite `FaseWorkflowService::chiudiFaseDiretta()` (conferma materiali + registra il
+lotto in uscita + propaga ai padri + verifica completamento ordine), con le stesse validazioni della
+chiusura normale. In più, `chiudiOrdine()` esegue un controllo finale: se dopo l'elaborazione resta
+anche una sola fase aperta, annulla tutto con un errore parlante — così non si verifica più il caso
+"tutto ok" con l'ordine che resta in `da compilare` e alcune fasi non chiuse.
+
 ---
 
 ## 6. Interfacce utente presenti

@@ -50,7 +50,7 @@ final class ChiusuraMassivaService
 
         $ordineElaborazione = $this->ordineBottomUp($fasi);
 
-        DB::transaction(function () use ($ordineElaborazione, $fasi, $fasiInput, $operatore) {
+        DB::transaction(function () use ($ordine, $ordineElaborazione, $fasi, $fasiInput, $operatore) {
             foreach ($ordineElaborazione as $faseId) {
                 /** @var FaseOrdine $fase */
                 $fase = $fasi[$faseId];
@@ -78,6 +78,21 @@ final class ChiusuraMassivaService
                     ), 0, $e);
                 }
             }
+
+            // Sicurezza: nessuna chiusura parziale silenziosa (§8). Se — per qualunque motivo — una
+            // fase risulta ancora aperta dopo l'elaborazione, annulla tutto con un errore parlante
+            // invece di riportare un falso "ok" lasciando l'ordine in "da compilare".
+            $aperte = FaseOrdine::where('ordine_id', $ordine->id)
+                ->where('stato', '!=', StatoFase::Chiusa->value)
+                ->pluck('articolo_prodotto_codice')
+                ->unique()
+                ->values();
+            if ($aperte->isNotEmpty()) {
+                throw new WorkflowException(
+                    'Impossibile chiudere l\'intero ordine: fasi rimaste aperte ('.$aperte->implode(', ').
+                    '). Verifica i dati inseriti e la configurazione (reparto/tipo-fase) di questi articoli.'
+                );
+            }
         });
     }
 
@@ -90,14 +105,26 @@ final class ChiusuraMassivaService
      */
     private function produci(FaseOrdine $fase, array $input, User $operatore): void
     {
-        $materialiInput = [];
-        foreach ((array) ($input['materiali'] ?? []) as $m) {
-            if (isset($m['materiale_id'])) {
-                $materialiInput[(int) $m['materiale_id']] = $m;
-            }
+        $steps = $fase->steps()->orderBy('ordine')->get();
+
+        // Articolo non configurato a reparto/tipo-fase => nessuno step. In chiusura massiva backoffice
+        // la fase va comunque chiusa (registrando consumi + lotto in uscita), altrimenti resterebbe
+        // aperta in silenzio e l'ordine non si completerebbe mai (§8). Chiusura diretta senza step.
+        if ($steps->isEmpty()) {
+            $this->confermaMateriali($fase, $input, $operatore);
+            $this->workflow->chiudiFaseDiretta(
+                $fase,
+                $input['lotto_prodotto'] ?? null,
+                isset($input['quantita_prodotta']) && $input['quantita_prodotta'] !== null
+                    ? (float) $input['quantita_prodotta']
+                    : null,
+                $operatore,
+            );
+            $this->splitSeCondiviso($fase, $operatore);
+
+            return;
         }
 
-        $steps = $fase->steps()->orderBy('ordine')->get();
         $ultimoStepId = $steps->last()?->id;
 
         foreach ($steps as $step) {
@@ -105,31 +132,7 @@ final class ChiusuraMassivaService
             $this->workflow->avvia($step, $operatore);
 
             if ($step->consuma_materiali) {
-                foreach ($fase->materiali as $materiale) {
-                    $mi = $materialiInput[$materiale->id] ?? null;
-                    $lotti = (array) ($mi['lotti'] ?? []);
-                    $conferma = (bool) ($mi['conferma_superamento'] ?? false);
-                    $qta = ($mi !== null && isset($mi['quantita_effettiva']) && $mi['quantita_effettiva'] !== null)
-                        ? (float) $mi['quantita_effettiva']
-                        : (float) $materiale->quantita_pianificata;
-
-                    // Auto-propagazione lotto semilavorato se non fornito (§5.3): dalla fase produttrice
-                    // (gia' chiusa grazie all'ordine bottom-up), a prescindere dal flag lotto. Resta
-                    // comunque sovrascrivibile via input.
-                    if ($materiale->e_semilavorato && $lotti === [] && $materiale->fase_produttrice_id) {
-                        $lp = LottoProdotto::where('fase_ordine_id', $materiale->fase_produttrice_id)->first();
-                        if ($lp !== null) {
-                            $lotti = [['lotto' => $lp->lotto, 'quantita' => $qta]];
-                        }
-                    }
-
-                    // Se sono presenti righe lotto, la quantita' confermata = somma dei lotti.
-                    if ($lotti !== []) {
-                        $qta = array_sum(array_map(fn ($l) => (float) ($l['quantita'] ?? 0), $lotti));
-                    }
-
-                    $this->workflow->confermaMateriale($materiale, $qta, $operatore, $lotti, null, $conferma);
-                }
+                $this->confermaMateriali($fase, $input, $operatore);
             }
 
             $eUltimo = $step->id === $ultimoStepId;
@@ -143,25 +146,76 @@ final class ChiusuraMassivaService
             );
         }
 
-        // Nodo condiviso: registra lo split con le quote pianificate (riscalate sulla quantita'
-        // prodotta) per sbloccare le fasi padre (§5-bis).
-        $fase->refresh();
-        if ($fase->is_nodo_condiviso && $fase->stato === StatoFase::Chiusa && ! $fase->split_completato) {
-            $assegnazioni = [];
-            foreach ($this->splitService->destinazioni($fase) as $d) {
-                $assegnazioni[$d['fase']->id] = (float) $d['quota_suggerita'];
+        $this->splitSeCondiviso($fase, $operatore);
+    }
+
+    /**
+     * Conferma tutti i materiali della fase secondo l'input (quantita', lotti, forzatura tolleranza),
+     * con auto-propagazione del lotto semilavorato dalla fase produttrice (§5.3) quando non fornito.
+     *
+     * @param array<string,mixed> $input
+     */
+    private function confermaMateriali(FaseOrdine $fase, array $input, User $operatore): void
+    {
+        $materialiInput = [];
+        foreach ((array) ($input['materiali'] ?? []) as $m) {
+            if (isset($m['materiale_id'])) {
+                $materialiInput[(int) $m['materiale_id']] = $m;
             }
-            $sommaQuote = array_sum($assegnazioni);
-            $prodotta = $this->splitService->quantitaDaRipartire($fase);
-            if ($sommaQuote > 0 && abs($sommaQuote - $prodotta) > 1e-9) {
-                $fattore = $prodotta / $sommaQuote;
-                foreach ($assegnazioni as $k => $v) {
-                    $assegnazioni[$k] = $v * $fattore;
+        }
+
+        foreach ($fase->materiali as $materiale) {
+            $mi = $materialiInput[$materiale->id] ?? null;
+            $lotti = (array) ($mi['lotti'] ?? []);
+            $conferma = (bool) ($mi['conferma_superamento'] ?? false);
+            $qta = ($mi !== null && isset($mi['quantita_effettiva']) && $mi['quantita_effettiva'] !== null)
+                ? (float) $mi['quantita_effettiva']
+                : (float) $materiale->quantita_pianificata;
+
+            // Auto-propagazione lotto semilavorato se non fornito (§5.3): dalla fase produttrice
+            // (gia' chiusa grazie all'ordine bottom-up), a prescindere dal flag lotto. Resta
+            // comunque sovrascrivibile via input.
+            if ($materiale->e_semilavorato && $lotti === [] && $materiale->fase_produttrice_id) {
+                $lp = LottoProdotto::where('fase_ordine_id', $materiale->fase_produttrice_id)->first();
+                if ($lp !== null) {
+                    $lotti = [['lotto' => $lp->lotto, 'quantita' => $qta]];
                 }
             }
-            if ($assegnazioni !== []) {
-                $this->splitService->registra($fase, $assegnazioni, $operatore);
+
+            // Se sono presenti righe lotto, la quantita' confermata = somma dei lotti.
+            if ($lotti !== []) {
+                $qta = array_sum(array_map(fn ($l) => (float) ($l['quantita'] ?? 0), $lotti));
             }
+
+            $this->workflow->confermaMateriale($materiale, $qta, $operatore, $lotti, null, $conferma);
+        }
+    }
+
+    /**
+     * Nodo condiviso: registra lo split con le quote pianificate (riscalate sulla quantita' prodotta)
+     * per sbloccare le fasi padre (§5-bis). No-op sulle fasi non condivise o gia' ripartite.
+     */
+    private function splitSeCondiviso(FaseOrdine $fase, User $operatore): void
+    {
+        $fase->refresh();
+        if (! $fase->is_nodo_condiviso || $fase->stato !== StatoFase::Chiusa || $fase->split_completato) {
+            return;
+        }
+
+        $assegnazioni = [];
+        foreach ($this->splitService->destinazioni($fase) as $d) {
+            $assegnazioni[$d['fase']->id] = (float) $d['quota_suggerita'];
+        }
+        $sommaQuote = array_sum($assegnazioni);
+        $prodotta = $this->splitService->quantitaDaRipartire($fase);
+        if ($sommaQuote > 0 && abs($sommaQuote - $prodotta) > 1e-9) {
+            $fattore = $prodotta / $sommaQuote;
+            foreach ($assegnazioni as $k => $v) {
+                $assegnazioni[$k] = $v * $fattore;
+            }
+        }
+        if ($assegnazioni !== []) {
+            $this->splitService->registra($fase, $assegnazioni, $operatore);
         }
     }
 

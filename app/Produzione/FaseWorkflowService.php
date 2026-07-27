@@ -601,6 +601,76 @@ final class FaseWorkflowService
         });
     }
 
+    /**
+     * Chiude una fase-nodo SENZA passare dagli step: usata dalla chiusura massiva backoffice per gli
+     * articoli non configurati a reparto/tipo-fase (nessuno step), §8. Applica le stesse validazioni
+     * della chiusura normale (materiali confermati, lotto obbligatorio dove previsto, lotto in uscita)
+     * e propaga il lotto ai padri. Il flusso guidato operatore, invece, richiede sempre gli step.
+     */
+    public function chiudiFaseDiretta(FaseOrdine $fase, ?string $lottoProdotto, ?float $quantitaProdotta, User $operatore): FaseOrdine
+    {
+        return DB::transaction(function () use ($fase, $lottoProdotto, $quantitaProdotta, $operatore) {
+            $fase = FaseOrdine::whereKey($fase->id)->lockForUpdate()->firstOrFail();
+            if ($fase->stato === StatoFase::Chiusa) {
+                return $fase; // idempotente
+            }
+
+            $mancanti = MaterialeFase::where('fase_ordine_id', $fase->id)->whereDoesntHave('consumo')->count();
+            if ($mancanti > 0) {
+                throw new WorkflowException("Confermare tutti i materiali prima di chiudere ({$mancanti} mancanti).");
+            }
+            $senzaLotto = MaterialeFase::where('fase_ordine_id', $fase->id)
+                ->where('flag_lotto', true)
+                ->where(function ($q) {
+                    $q->whereDoesntHave('consumo')
+                        ->orWhereHas('consumo', fn ($c) => $c->whereDoesntHave('lotti'));
+                })
+                ->count();
+            if ($senzaLotto > 0) {
+                throw new WorkflowException("Impossibile chiudere: {$senzaLotto} componente/i a lotto senza lotto valorizzato.");
+            }
+
+            $richiedeLotto = Articolo::where('codice', $fase->articolo_prodotto_codice)->first()?->richiedeLotto() ?? false;
+            $lottoProdotto = $lottoProdotto !== null ? trim($lottoProdotto) : null;
+            if ($richiedeLotto && ($lottoProdotto === null || $lottoProdotto === '')) {
+                throw new WorkflowException('Inserire il lotto del prodotto in uscita per chiudere la fase.');
+            }
+
+            $qtaProdotta = $quantitaProdotta ?? (float) $fase->quantita_pianificata;
+            $fase->update([
+                'stato' => StatoFase::Chiusa,
+                'timestamp_inizio' => $fase->timestamp_inizio ?? now(),
+                'timestamp_fine' => now(),
+                'quantita_prodotta' => $qtaProdotta,
+                'operatore_id' => $operatore->id,
+                'reparto_step_corrente_id' => null,
+            ]);
+
+            if ($lottoProdotto !== null && $lottoProdotto !== '') {
+                LottoProdotto::updateOrCreate(
+                    ['fase_ordine_id' => $fase->id],
+                    [
+                        'articolo_codice' => $fase->articolo_prodotto_codice,
+                        'lotto' => $lottoProdotto,
+                        'quantita' => $qtaProdotta,
+                        'creato_da_id' => $operatore->id,
+                    ],
+                );
+            }
+
+            $this->propagaLottoAiPadri($fase, $lottoProdotto, $operatore);
+
+            LogEventi::registra('fase_chiusa', $fase, $operatore->id, [
+                'quantita_prodotta' => $qtaProdotta,
+                'lotto_prodotto' => $lottoProdotto,
+                'senza_step' => true,
+            ]);
+            $this->verificaCompletamentoOrdine($fase);
+
+            return $fase;
+        });
+    }
+
     private function verificaCompletamentoOrdine(FaseOrdine $fase): void
     {
         $apertaResidua = FaseOrdine::where('ordine_id', $fase->ordine_id)
