@@ -154,13 +154,12 @@ final class FaseWorkflowService
                 return $fase; // idempotente
             }
 
-            // Non si preleva da stock una fase con consumi gia' registrati (produzione avviata).
-            $haConsumi = MaterialeFase::where('fase_ordine_id', $fase->id)
-                ->whereHas('consumo')
-                ->exists();
-            if ($haConsumi) {
-                throw new WorkflowException('Fase con materiali gia confermati: non puo essere completata da stock.');
-            }
+            // Prelievo da stock: la fase NON produce, quindi eventuali consumi gia' registrati sui
+            // suoi componenti (es. propagati in automatico dalla chiusura dei figli, o inseriti prima
+            // di cambiare idea) vengono SCARTATI: non hanno senso se il semilavorato arriva da stock.
+            // Le righe lotto associate cadono in cascade (FK consumo_materiale_lotti).
+            $materialiIds = MaterialeFase::where('fase_ordine_id', $fase->id)->pluck('id');
+            ConsumoMateriale::whereIn('materiale_fase_id', $materialiIds)->delete();
 
             // Il lotto deve essere gia' presente a sistema (§5.3): storico lotti_prodotto OPPURE
             // giacenza reale sul gestionale (qualunque magazzino, change #2). Altrimenti non e' stock.
