@@ -21,14 +21,15 @@ class EsportazioneController extends Controller
         private readonly EsportazioneService $service,
     ) {}
 
-    public function esporta(Request $request, OrdineProduzione $ordine): BinaryFileResponse|RedirectResponse
+    public function esporta(Request $request, OrdineProduzione $ordine, string $gestionale): BinaryFileResponse|RedirectResponse
     {
         try {
-            $path = $this->service->esportaZip($ordine, $request->user()->id);
+            $file = $this->service->esporta($ordine, $gestionale, $request->user()->id);
         } catch (RuntimeException $e) {
             return back()->with('error', $e->getMessage());
         }
 
-        return response()->download($path)->deleteFileAfterSend(true);
+        return response()->download($file['path'], $file['nome'], ['Content-Type' => $file['mime']])
+            ->deleteFileAfterSend(true);
     }
 }

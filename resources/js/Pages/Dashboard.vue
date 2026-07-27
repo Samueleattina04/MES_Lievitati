@@ -3,17 +3,21 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 
-defineProps({
+const props = defineProps({
     kpi: { type: Object, required: true },
     fasiFerme: { type: Array, default: () => [] },
     caricoReparto: { type: Array, default: () => [] },
     tempiReparto: { type: Array, default: () => [] },
     prontiExport: { type: Array, default: () => [] },
+    gestionaliExport: { type: Array, default: () => [] },
 });
 
 const csrf = computed(() => usePage().props.csrf_token);
 const puoEsportare = computed(() => usePage().props.auth.can?.esportare === true);
 const flashError = computed(() => usePage().props.flash?.error);
+const flashSuccess = computed(() => usePage().props.flash?.success);
+// Gestionale abilitato solo se ha un tracciato configurato (Omni resta disabilitato finché manca).
+const haGestionale = (g) => props.gestionaliExport.includes(g);
 </script>
 
 <template>
@@ -27,6 +31,7 @@ const flashError = computed(() => usePage().props.flash?.error);
         <div class="py-8">
             <div class="mx-auto max-w-7xl space-y-6 sm:px-6 lg:px-8">
                 <div v-if="flashError" class="rounded-md bg-red-50 p-4 text-sm text-red-700">{{ flashError }}</div>
+                <div v-if="flashSuccess" class="rounded-md bg-emerald-50 p-4 text-sm text-emerald-700">{{ flashSuccess }}</div>
 
                 <!-- KPI ordini per stato -->
                 <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -106,20 +111,42 @@ const flashError = computed(() => usePage().props.flash?.error);
                     <div v-if="prontiExport.length === 0" class="text-sm text-gray-400">Nessun ordine completato da esportare.</div>
                     <table v-else class="w-full text-sm">
                         <thead class="text-left text-xs uppercase text-gray-400">
-                            <tr><th class="py-1">Numero</th><th>Articolo</th><th class="text-right">Quantita</th><th></th></tr>
+                            <tr><th class="py-1">Numero</th><th>Articolo</th><th class="text-right">Quantita</th><th class="text-right">Export</th></tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="o in prontiExport" :key="o.id">
-                                <td class="py-2 font-medium">{{ o.numero }}</td>
+                                <td class="py-2 font-medium">
+                                    {{ o.numero }}
+                                    <span v-if="o.esportato" class="ml-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">esportato</span>
+                                </td>
                                 <td>{{ o.articolo }}</td>
                                 <td class="text-right">{{ o.quantita }} {{ o.udm }}</td>
                                 <td class="text-right">
-                                    <form v-if="puoEsportare" :action="route('export.esporta', o.id)" method="post">
-                                        <input type="hidden" name="_token" :value="csrf" />
-                                        <button type="submit" class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">
-                                            Esporta (ZIP)
-                                        </button>
-                                    </form>
+                                    <div v-if="puoEsportare" class="flex items-center justify-end gap-2">
+                                        <!-- Export ESOLVER -->
+                                        <form :action="route('export.esporta', [o.id, 'esolver'])" method="post">
+                                            <input type="hidden" name="_token" :value="csrf" />
+                                            <button
+                                                type="submit"
+                                                :disabled="!haGestionale('esolver')"
+                                                class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+                                            >
+                                                Export ESOLVER
+                                            </button>
+                                        </form>
+                                        <!-- Export Omni (disabilitato finché non è configurato il tracciato) -->
+                                        <form :action="route('export.esporta', [o.id, 'omni'])" method="post">
+                                            <input type="hidden" name="_token" :value="csrf" />
+                                            <button
+                                                type="submit"
+                                                :disabled="!haGestionale('omni')"
+                                                :title="haGestionale('omni') ? '' : 'Tracciato Omni non ancora configurato'"
+                                                class="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-40"
+                                            >
+                                                Export Omni
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>

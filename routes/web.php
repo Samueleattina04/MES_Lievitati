@@ -90,8 +90,10 @@ Route::middleware('auth')->group(function () {
         ->name('genealogia.index');
 
     // Export tracciati (§10): SOLO chi ha il permesso 'esportare' (backoffice + admin, NON pianificazione).
-    Route::post('/export/{ordine}', [EsportazioneController::class, 'esporta'])
+    // Un tracciato per gestionale di destinazione ('esolver' | 'omni').
+    Route::post('/export/{ordine}/{gestionale}', [EsportazioneController::class, 'esporta'])
         ->middleware('can:esportare')
+        ->whereIn('gestionale', ['esolver', 'omni'])
         ->name('export.esporta');
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

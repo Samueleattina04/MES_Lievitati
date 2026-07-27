@@ -15,34 +15,19 @@ use Database\Seeders\MesConfigSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
-use ZipArchive;
 
 /**
- * Test Fase 7 (§10): l'export genera i tracciati (ZIP) solo per ordini completati e marca
- * l'ordine "esportato" (non piu' modificabile). Richiede DB (gira sul server).
+ * Test export tracciati (§10): l'export ESOLVER (versamenti) genera il CSV solo per ordini completati,
+ * col formato reale (intestazione fissa + righe causale;data;articolo;qta;lotto;01;850;), marca l'ordine
+ * "esportato" ma resta ri-esportabile (anche verso altri gestionali). Richiede DB (gira sul server).
  */
 final class ExportTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_export_solo_dopo_completamento_e_marca_esportato(): void
+    private function completa(OrdineProduzione $ordine, User $operatore): void
     {
-        $this->seed(MesConfigSeeder::class);
-        $operatore = User::where('name', 'Sara Neri (Jolly)')->firstOrFail();
         $workflow = app(FaseWorkflowService::class);
-
-        $ordine = app(OrdineProduzioneService::class)->creaManuale(['articolo_finito_codice' => 'PAN0104', 'quantita' => 10]);
-        $service = app(EsportazioneService::class);
-
-        // Non ancora completato: l'export deve essere rifiutato.
-        try {
-            $service->esportaZip($ordine, $operatore->id);
-            self::fail('Atteso RuntimeException su ordine non completato.');
-        } catch (RuntimeException) {
-            self::assertTrue(true);
-        }
-
-        // Completa l'ordine (con lotti).
         for ($giro = 0; $giro < 60; $giro++) {
             $step = FaseOrdineStep::whereHas('fase', fn ($q) => $q->where('ordine_id', $ordine->id))
                 ->where('stato', '!=', 'chiusa')->get()
@@ -59,28 +44,65 @@ final class ExportTest extends TestCase
             }
             $workflow->chiudiStep($step->fresh(), $operatore, null, 'OUT-'.$step->fase_ordine_id);
         }
+    }
 
+    public function test_export_esolver_genera_il_tracciato_e_marca_esportato(): void
+    {
+        $this->seed(MesConfigSeeder::class);
+        $operatore = User::where('name', 'Sara Neri (Jolly)')->firstOrFail();
+        $ordine = app(OrdineProduzioneService::class)->creaManuale(['articolo_finito_codice' => 'PAN0104', 'quantita' => 10]);
+        $service = app(EsportazioneService::class);
+
+        // Non ancora completato: l'export deve essere rifiutato.
+        try {
+            $service->esporta($ordine, 'esolver', $operatore->id);
+            self::fail('Atteso RuntimeException su ordine non completato.');
+        } catch (RuntimeException) {
+            self::assertTrue(true);
+        }
+
+        $this->completa($ordine, $operatore);
         self::assertSame(StatoOrdine::Completato, $ordine->fresh()->stato);
 
-        // Esporta: crea lo ZIP e marca esportato.
-        $zip = $service->esportaZip($ordine->fresh(), $operatore->id);
+        // Esporta ESOLVER: file CSV singolo (non ZIP), marca "esportato".
+        $file = $service->esporta($ordine->fresh(), 'esolver', $operatore->id);
+        self::assertFileExists($file['path']);
+        self::assertStringStartsWith('esolver_', $file['nome']);
+        self::assertSame('text/csv', $file['mime']);
 
-        self::assertFileExists($zip);
-        $archivio = new ZipArchive();
-        $archivio->open($zip);
-        self::assertSame(3, $archivio->numFiles);
-        $nomi = [];
-        for ($i = 0; $i < $archivio->numFiles; $i++) {
-            $nomi[] = $archivio->getNameIndex($i);
-        }
-        $archivio->close();
-        @unlink($zip);
+        $csv = (string) file_get_contents($file['path']);
+        @unlink($file['path']);
 
-        self::assertTrue((bool) collect($nomi)->first(fn ($n) => str_starts_with($n, 'consumi_')));
-        self::assertTrue((bool) collect($nomi)->first(fn ($n) => str_starts_with($n, 'versamenti_')));
-        self::assertTrue((bool) collect($nomi)->first(fn ($n) => str_starts_with($n, 'tracciato_')));
+        // Nessun BOM; intestazione fissa; righe nel formato ESOLVER (causale 103, costanti 01;850;).
+        self::assertFalse(str_starts_with($csv, "\xEF\xBB\xBF"), 'Il tracciato ESOLVER non deve avere il BOM.');
+        self::assertStringStartsWith('10;20;150;180;270;260;140;', $csv);
+        self::assertMatchesRegularExpression('#\r?\n103;\d{2}/\d{2}/\d{4};[^;]+;[0-9,]+;OUT-\d+;01;850;#', $csv);
 
         self::assertSame(StatoOrdine::Esportato, $ordine->fresh()->stato);
         self::assertNotNull($ordine->fresh()->esportato_at);
+    }
+
+    public function test_riesportabile_e_gestionale_senza_tracciato_rifiutato(): void
+    {
+        $this->seed(MesConfigSeeder::class);
+        $operatore = User::where('name', 'Sara Neri (Jolly)')->firstOrFail();
+        $ordine = app(OrdineProduzioneService::class)->creaManuale(['articolo_finito_codice' => 'PAN0104', 'quantita' => 10]);
+        $service = app(EsportazioneService::class);
+
+        $this->completa($ordine, $operatore);
+        $service->esporta($ordine->fresh(), 'esolver', $operatore->id); // -> Esportato
+
+        // Ancora ri-esportabile anche da "Esportato" (ri-scaricabile / altri gestionali).
+        $file = $service->esporta($ordine->fresh(), 'esolver', $operatore->id);
+        self::assertFileExists($file['path']);
+        @unlink($file['path']);
+
+        // Gestionale senza tracciato configurato (Omni): errore parlante, nessun file.
+        try {
+            $service->esporta($ordine->fresh(), 'omni', $operatore->id);
+            self::fail('Atteso RuntimeException per gestionale senza tracciato.');
+        } catch (RuntimeException) {
+            self::assertTrue(true);
+        }
     }
 }

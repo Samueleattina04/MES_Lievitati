@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\StatoFase;
 use App\Enums\StatoOrdine;
+use App\Export\EsportazioneService;
 use App\Models\FaseOrdine;
 use App\Models\OrdineProduzione;
 use Illuminate\Support\Facades\DB;
@@ -73,10 +74,12 @@ class DashboardController extends Controller
             ->count();
         $percScostamento = $fasiChiuse > 0 ? round($fasiScostate / $fasiChiuse * 100, 1) : 0.0;
 
-        // Ordini pronti per l'export (completati).
-        $prontiExport = OrdineProduzione::where('stato', StatoOrdine::Completato->value)
-            ->orderBy('data')
-            ->get(['id', 'numero', 'articolo_finito_codice', 'quantita', 'udm', 'data'])
+        // Ordini pronti per l'export: completati (mai esportati) + esportati (ri-scaricabili e ancora
+        // esportabili verso l'altro gestionale). Cosi' i due bottoni restano disponibili dopo il primo.
+        $prontiExport = OrdineProduzione::whereIn('stato', [StatoOrdine::Completato->value, StatoOrdine::Esportato->value])
+            ->orderByDesc('data')
+            ->limit(100)
+            ->get(['id', 'numero', 'articolo_finito_codice', 'quantita', 'udm', 'data', 'stato', 'esportato_at'])
             ->map(fn ($o) => [
                 'id' => $o->id,
                 'numero' => $o->numero,
@@ -84,7 +87,11 @@ class DashboardController extends Controller
                 'quantita' => $o->quantita,
                 'udm' => $o->udm,
                 'data' => $o->data?->toDateString(),
+                'esportato' => $o->stato === StatoOrdine::Esportato,
             ]);
+
+        // Gestionali con un tracciato configurato: la UI abilita solo i bottoni corrispondenti.
+        $gestionaliExport = app(EsportazioneService::class)->gestionaliConfigurati();
 
         return Inertia::render('Dashboard', [
             'kpi' => [
@@ -98,6 +105,7 @@ class DashboardController extends Controller
             'caricoReparto' => $caricoReparto,
             'tempiReparto' => $tempiReparto,
             'prontiExport' => $prontiExport,
+            'gestionaliExport' => $gestionaliExport,
         ]);
     }
 }

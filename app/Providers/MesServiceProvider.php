@@ -8,13 +8,10 @@ use App\Bom\Contracts\BomSourceAdapterInterface;
 use App\Bom\FixtureBomAdapter;
 use App\Bom\SqlServerBomAdapter;
 use App\Export\EsportazioneService;
-use App\Export\Templates\ConsumiLottiCsvTemplate;
-use App\Export\Templates\TracciatoJsonTemplate;
-use App\Export\Templates\VersamentiCsvTemplate;
+use App\Export\Templates\EsolverVersamentiCsvTemplate;
 use App\Ordini\OrderExplosionPlanner;
 use App\Produzione\ChiusuraMassivaService;
 use App\Produzione\FaseWorkflowService;
-use App\Produzione\GenealogiaService;
 use App\Produzione\SplitService;
 use App\Models\User;
 use App\Stock\Contracts\LottoSemilavoratoSourceInterface;
@@ -103,13 +100,13 @@ class MesServiceProvider extends ServiceProvider
             ),
         );
 
-        // Motore di export a template (§10): registro dei tracciati disponibili.
+        // Motore di export a template (§10): tracciati raggruppati per gestionale di destinazione.
         $this->app->bind(
             EsportazioneService::class,
-            fn (Application $app) => new EsportazioneService([
-                new ConsumiLottiCsvTemplate(),
-                new VersamentiCsvTemplate(),
-                new TracciatoJsonTemplate($app->make(GenealogiaService::class)),
+            fn () => new EsportazioneService([
+                'esolver' => [new EsolverVersamentiCsvTemplate()],
+                // Omni: in attesa del tracciato reale (file di esempio dal committente) -> bottone disabilitato.
+                'omni' => [],
             ]),
         );
     }

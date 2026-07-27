@@ -190,8 +190,10 @@ cast `dati` → array; relazioni `user()`, `soggetto()` (morphTo).
   - `SqlServerStockAdapter` (query su `MagProgrArticoli`/`MagProgrLotto`), `FixtureStockAdapter`
     (dati in memoria/JSON), `FifoAllocator::proponi()`/`totale()` (statico), `StockLotto` (DTO).
 - **`app/Export`** — Export.
-  - `Contracts\ExportTemplateInterface`; template `ConsumiLottiCsvTemplate`, `VersamentiCsvTemplate`,
-    `TracciatoJsonTemplate`; `CsvWriter`; `EsportazioneService::genera()`/`esportaZip()`.
+  - `Contracts\ExportTemplateInterface`; template `EsolverVersamentiCsvTemplate` (tracciato reale ESOLVER,
+    versamenti); `EsportazioneService` con template raggruppati per **gestionale** (`esolver`, `omni`):
+    `gestionaliConfigurati()`, `genera($ordine,$gestionale)`, `esporta($ordine,$gestionale)`. Restano nel
+    repo (non piu' registrati) i template generici `ConsumiLottiCsvTemplate`/`VersamentiCsvTemplate`/`TracciatoJsonTemplate`/`CsvWriter`.
 - **`app/Enums`** — `RuoloUtente` (con `label()`, `usaPin()`, e i metodi di permesso descritti in §8),
   `StatoOrdine`, `StatoFase`, `TipoArticolo`, `OrigineOrdine` (tutti string-backed, con `label()`).
 - **`app/Support\LogEventi::registra()`** — helper che scrive righe in `log_eventi`.
@@ -399,10 +401,15 @@ Pagine Vue in `resources/js/Pages` (rese via Inertia; nomi = componenti):
   - `GestionaleSchemaCommand` (`gestionale:schema`) interroga `INFORMATION_SCHEMA.COLUMNS`.
   - La scelta tra adapter reale e fixture è governata da `config('mes.bom_adapter')` /
     `config('mes.stock.adapter')` in `MesServiceProvider::register()`.
-- **Export su file**: `EsportazioneService` produce uno ZIP (`ZipArchive`) contenente:
-  `consumi_{numero}.csv` (`ConsumiLottiCsvTemplate`), `versamenti_{numero}.csv`
-  (`VersamentiCsvTemplate`), `tracciato_{numero}.json` (`TracciatoJsonTemplate`). CSV separati da `;`
-  con BOM UTF-8 (`CsvWriter`).
+- **Export su file (per gestionale)**: dalla dashboard, per ogni ordine completato ci sono due bottoni
+  — **Export ESOLVER** e **Export Omni** (`POST /export/{ordine}/{gestionale}`). ESOLVER genera
+  `esolver_{numero}.csv` (`EsolverVersamentiCsvTemplate`): versamenti a magazzino nel formato reale
+  (riga 1 intestazione fissa `10;20;150;180;270;260;140;`, poi `causale;data;articolo;qta(virgola);lotto;01;850;`,
+  separatore `;` con `;` finale, **senza BOM**, CRLF). Le costanti sono in `config('mes.export.esolver')`.
+  Omni è in attesa del tracciato reale (nessun template → bottone disabilitato). L'export **non blocca**
+  l'altro gestionale: marca l'ordine "esportato" ma resta ri-esportabile/ri-scaricabile (in dashboard
+  restano visibili anche gli ordini `esportato`). I template generici CSV/JSON restano nel repo ma non
+  sono più registrati.
 - **Fixture di sviluppo/test**: `tests/fixtures/bom/*.json` (generati da
   `tests/fixtures/bom/_src/build_fixtures.php`) e `tests/fixtures/stock/giacenze.json`.
 - **PWA**: `public/manifest.webmanifest`, `public/sw.js`, `public/icons/icon.svg`, registrati in

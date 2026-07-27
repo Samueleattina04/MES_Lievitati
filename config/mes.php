@@ -100,6 +100,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Export tracciati per i gestionali (§10)
+    |--------------------------------------------------------------------------
+    |
+    | Costanti del tracciato ESOLVER (versamenti a magazzino), dedotte dal file di esempio reale
+    | "lievitati 30-06-2026.csv". Il tracciato e' un CSV separato da ';' con ';' finale, SENZA BOM.
+    | Riga 1 = intestazione fissa; poi una riga per lotto prodotto:
+    |   causale ; data(gg/mm/aaaa) ; codice articolo ; quantita(virgola) ; lotto ; col6 ; col7 ;
+    | I valori 'col6' (es. 01) e 'col7' (es. 850) sono costanti del tracciato (magazzino/causale riga
+    | da confermare col committente): qui sono parametrizzati per adattarli senza toccare il codice.
+    */
+    'export' => [
+        'esolver' => [
+            'intestazione' => env('MES_ESOLVER_INTESTAZIONE', '10;20;150;180;270;260;140'),
+            'causale' => env('MES_ESOLVER_CAUSALE', '103'),
+            'col6' => env('MES_ESOLVER_COL6', '01'),
+            'col7' => env('MES_ESOLVER_COL7', '850'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
     |
