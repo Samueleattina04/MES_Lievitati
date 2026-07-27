@@ -51,46 +51,76 @@ const lottiPerArticolo = computed(() => {
     return map;
 });
 
+// Quantità prodotta corrente per articolo (per propagare la quantità consumata sui padri).
+const quantitaProdottaPerArticolo = computed(() => {
+    const map = {};
+    props.fasi.forEach((f) => {
+        const s = stato[f.id];
+        const qta = s.modalita === 'stock' ? f.quantita : s.quantita_prodotta;
+        if (qta !== '' && qta !== null && qta !== undefined) {
+            map[f.articolo] = Number(qta);
+        }
+    });
+    return map;
+});
+
 // Propaga il lotto del semilavorato prodotto sulle righe-componente dei padri. Il campo del padre
 // resta SINCRONIZZATO col lotto sorgente (anche mentre lo digiti, quindi niente valori "congelati"
 // a metà) finché non lo modifichi a mano: da quel momento non viene più sovrascritto (default
 // modificabile, §5.3). Il tracciamento "auto" evita di ricalpestare una scelta manuale.
 const lottoAuto = reactive({});
+const qtaAuto = reactive({});
+// Articoli prodotti da un nodo CONDIVISO: la loro quantità è ripartita tra più padri (split),
+// quindi la quantità prodotta NON viene propagata (resta quella pianificata/di ripartizione).
+const articoliCondivisi = new Set(props.fasi.filter((f) => f.condiviso).map((f) => f.articolo));
 const chiaveMat = (faseId, matId) => `${faseId}:${matId}`;
 
 function propagaLotti() {
-    const map = lottiPerArticolo.value;
+    const mapLotto = lottiPerArticolo.value;
+    const mapQta = quantitaProdottaPerArticolo.value;
     props.fasi.forEach((f) => {
         f.materiali.forEach((m) => {
             if (!m.semilavorato) {
-                return;
-            }
-            const nuovo = map[m.articolo];
-            if (!nuovo) {
                 return;
             }
             const riga = stato[f.id]?.materiali?.[m.id]?.lotti?.[0];
             if (!riga) {
                 return;
             }
-            const vuoto = !riga.lotto || riga.lotto.trim() === '';
             const k = chiaveMat(f.id, m.id);
-            if (vuoto || lottoAuto[k]) {
-                riga.lotto = nuovo;
+
+            // Lotto: sincronizzato col lotto in uscita del figlio finché non modificato a mano.
+            const nuovoLotto = mapLotto[m.articolo];
+            const lottoVuoto = !riga.lotto || riga.lotto.trim() === '';
+            if (nuovoLotto && (lottoVuoto || lottoAuto[k])) {
+                riga.lotto = nuovoLotto;
                 lottoAuto[k] = true;
+            }
+
+            // Quantità: segue la quantità prodotta dal figlio (default modificabile). Esclusi i nodi
+            // condivisi, la cui quantità è ripartita tra più padri con lo split.
+            const nuovaQta = mapQta[m.articolo];
+            if (nuovaQta !== undefined && ! articoliCondivisi.has(m.articolo) && qtaAuto[k] !== false) {
+                riga.quantita = nuovaQta;
+                qtaAuto[k] = true;
             }
         });
     });
 }
 
-// L'utente ha modificato a mano il lotto di un componente: smette di essere auto-propagato.
+// L'utente modifica a mano lotto/quantità di un componente: smette di essere auto-propagato.
 function lottoModificatoAMano(faseId, m) {
     if (m.semilavorato) {
         lottoAuto[chiaveMat(faseId, m.id)] = false;
     }
 }
+function qtaModificataAMano(faseId, m) {
+    if (m.semilavorato) {
+        qtaAuto[chiaveMat(faseId, m.id)] = false;
+    }
+}
 
-watch(lottiPerArticolo, () => propagaLotti(), { deep: true, immediate: true });
+watch([lottiPerArticolo, quantitaProdottaPerArticolo], () => propagaLotti(), { deep: true, immediate: true });
 
 const sommaLotti = (faseId, matId) =>
     (stato[faseId].materiali[matId].lotti || []).reduce((acc, r) => acc + (parseFloat(r.quantita) || 0), 0);
@@ -285,7 +315,7 @@ function invia() {
                                             class="mb-1 flex items-center gap-2"
                                         >
                                             <input v-model="riga.lotto" type="text" placeholder="Lotto" class="flex-1 rounded-lg border-gray-300 text-sm" @input="lottoModificatoAMano(f.id, m)" />
-                                            <input v-model="riga.quantita" type="number" step="0.000001" min="0" class="w-28 rounded-lg border-gray-300 text-right text-sm" />
+                                            <input v-model="riga.quantita" type="number" step="0.000001" min="0" class="w-28 rounded-lg border-gray-300 text-right text-sm" @input="qtaModificataAMano(f.id, m)" />
                                             <button type="button" class="rounded bg-gray-200 px-2 py-1 text-xs" @click="rimuoviLotto(f.id, m.id, i)">✕</button>
                                         </div>
                                         <div class="flex items-center justify-between text-xs text-gray-500">
@@ -332,6 +362,7 @@ function invia() {
                                         step="0.000001"
                                         min="0"
                                         class="w-40 rounded-lg border-gray-300 text-right text-sm"
+                                        @input="propagaLotti"
                                     />
                                 </div>
                             </div>
