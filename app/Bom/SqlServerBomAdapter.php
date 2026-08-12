@@ -119,8 +119,9 @@ final class SqlServerBomAdapter implements BomSourceAdapterInterface
                 ROW_NUMBER() OVER (
                     PARTITION BY CodDb
                     ORDER BY
-                        CASE WHEN ISNULL(ConfAltDb, '') = '' THEN 0 ELSE 1 END,  -- preferisci config standard
-                        DataDecorrenza DESC
+                        CASE WHEN ISNULL(OldPreferenziale, 0) <> 0 THEN 0 ELSE 1 END, -- 1) distinta PREFERENZIALE del gestionale
+                        CASE WHEN ISNULL(ConfAltDb, '') = '' THEN 0 ELSE 1 END,       -- 2) fallback: configurazione standard
+                        DataDecorrenza DESC                                          -- 3) fallback: decorrenza piu' recente
                 ) AS RigaUnica
             FROM DBaseVersioni WITH (NOLOCK)
         ),

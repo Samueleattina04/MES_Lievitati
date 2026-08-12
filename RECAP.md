@@ -154,7 +154,11 @@ cast `dati` → array; relazioni `user()`, `soggetto()` (morphTo).
 - **`app/Bom`** — Esplosione distinte.
   - `Contracts\BomSourceAdapterInterface`: `explode()`, `esisteArticolo()`, `cercaArticoli()`.
   - `SqlServerBomAdapter`: implementa l'interfaccia con query su `DBaseVersioni`/`DBaseRighe`
-    (CTE ricorsiva in `queryEsplosione()`), usando la connessione `sqlsrv_gestionale`.
+    (CTE ricorsiva in `queryEsplosione()`), usando la connessione `sqlsrv_gestionale`. **Scelta della
+    versione di distinta** (quando un articolo ha piu' versioni): si esplode la **distinta preferenziale**
+    del gestionale (`DBaseVersioni.OldPreferenziale <> 0`); in mancanza, fallback alla configurazione
+    standard (`ConfAltDb` vuoto) e poi alla `DataDecorrenza` piu' recente. La preferenziale puo' essere
+    una configurazione alternativa (`ConfAltDb` valorizzato), quindi ha priorita' sulla standard.
   - `FixtureBomAdapter`: legge alberi da file JSON in `tests/fixtures/bom`.
   - `BomRow` (readonly DTO), `BomExplosion` (collezione con helper `codiciNodiProdotti()`,
     `figliDiretti()`, `occorrenze()`, `padriDistinti()`, `eCondiviso()`, `livelloMassimo()`).
