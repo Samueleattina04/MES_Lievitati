@@ -89,4 +89,14 @@ final class TracciabilitaServiceTest extends TestCase
 
         self::assertFalse($res['trovato']);
     }
+
+    public function test_export_omni_una_riga_per_lotto_con_componenti_orizzontali(): void
+    {
+        $res = $this->service()->albero('PAN-1');
+        $csv = \App\Tracciabilita\OmniExport::csv($res['produzioni'], ['includi_data' => false]);
+
+        // Una riga per lotto di produzione, componenti come lotto*quantità in orizzontale.
+        self::assertStringContainsString('PAN-1;IMP-1*8;INC-1*10', $csv);
+        self::assertStringContainsString('IMP-1;FAR-1*5;BUR-1*2', $csv);
+    }
 }

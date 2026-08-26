@@ -117,6 +117,12 @@ return [
             'col6' => env('MES_ESOLVER_COL6', '01'),
             'col7' => env('MES_ESOLVER_COL7', '850'),
         ],
+        // Omni (§6-bis): file di tracciabilità per l'import — una riga per lotto di produzione, i
+        // componenti in orizzontale come `lotto*quantità`. Dedotto dal file reale "Tracciabilità ...xlsm".
+        'omni' => [
+            'includi_data' => (bool) env('MES_OMNI_INCLUDI_DATA', true),
+            'separatore' => env('MES_OMNI_SEPARATORE', ';'),
+        ],
     ],
 
     /*

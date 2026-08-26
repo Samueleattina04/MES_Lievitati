@@ -71,11 +71,19 @@ const colore = {
                         class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                     />
                     <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500">Cerca</button>
+                    <a
+                        v-if="omniPronto && trovato"
+                        :href="route('tracciabilita.omni', { lotto })"
+                        class="rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500"
+                    >
+                        Scarica per Omni
+                    </a>
                     <button
+                        v-else
                         type="button"
-                        :disabled="!omniPronto || !trovato"
-                        :title="omniPronto ? '' : 'Tracciato Omni non ancora configurato'"
-                        class="rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+                        disabled
+                        :title="!omniPronto ? 'Tracciato Omni non ancora configurato' : 'Cerca prima un lotto valido'"
+                        class="rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white opacity-40"
                     >
                         Scarica per Omni
                     </button>

@@ -208,8 +208,11 @@ cast `dati` → array; relazioni `user()`, `soggetto()` (morphTo).
     Carico/scarico = `TipoMovMag` (2=carico "Carico da produzione", 3=scarico "Consumo per produzione").
     Ricorsione via `RifLottoPFAlfanum` -> `RifLottoAlfanum`. Config in `config('mes.tracciabilita')`.
   - UI: pagina `Tracciabilita/Index` (rotta `tracciabilita.index`, `can:vedere-genealogia`): cerca per
-    lotto del finito, mostra l'albero della distinta risalita + tabella movimenti. Bottone "Scarica per
-    Omni" presente ma **disabilitato** (in attesa del tracciato Omni).
+    lotto del finito, mostra l'albero della distinta risalita + tabella movimenti.
+  - **Export Omni** (`OmniExport::csv()` + rotta `tracciabilita.omni`, bottone "Scarica per Omni"):
+    genera il file d'importazione nel formato reale aziendale — **una riga per lotto di produzione**
+    (finito + semilavorati), i componenti in **orizzontale** come `lotto*quantità` (decimale con
+    virgola), colonne `[data] ; lotto ; comp1 ; comp2 ; …`, separatore `;`. Config `mes.export.omni`.
 - **`app/Enums`** — `RuoloUtente` (con `label()`, `usaPin()`, e i metodi di permesso descritti in §8),
   `StatoOrdine`, `StatoFase`, `TipoArticolo`, `OrigineOrdine` (tutti string-backed, con `label()`).
 - **`app/Support\LogEventi::registra()`** — helper che scrive righe in `log_eventi`.

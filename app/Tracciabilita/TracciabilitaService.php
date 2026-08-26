@@ -19,13 +19,13 @@ final class TracciabilitaService
     ) {}
 
     /**
-     * @return array{lotto:string, trovato:bool, nodo:?array<string,mixed>, movimenti:list<array<string,mixed>>}
+     * @return array{lotto:string, trovato:bool, nodo:?array<string,mixed>, movimenti:list<array<string,mixed>>, produzioni:list<array<string,mixed>>}
      */
     public function albero(string $lottoRadice): array
     {
         $lottoRadice = trim($lottoRadice);
         if ($lottoRadice === '') {
-            return ['lotto' => '', 'trovato' => false, 'nodo' => null, 'movimenti' => []];
+            return ['lotto' => '', 'trovato' => false, 'nodo' => null, 'movimenti' => [], 'produzioni' => []];
         }
 
         // BFS: raccoglie tutti i consumi risalendo per lotto-prodotto, livello per livello.
@@ -71,7 +71,38 @@ final class TracciabilitaService
             'trovato' => $trovato,
             'nodo' => $nodo,
             'movimenti' => $this->flatten($consumiPerLotto, $carichi),
+            'produzioni' => $this->produzioni($consumiPerLotto, $carichi),
         ];
+    }
+
+    /**
+     * Un elemento per LOTTO DI PRODUZIONE (finito + semilavorati) con i suoi componenti: base per
+     * l'export nel tracciato Omni (una riga per lotto, componenti in orizzontale).
+     *
+     * @param  array<string,list<MovimentoLotto>>  $consumiPerLotto
+     * @param  array<string,MovimentoLotto>  $carichi
+     * @return list<array<string,mixed>>
+     */
+    private function produzioni(array $consumiPerLotto, array $carichi): array
+    {
+        $out = [];
+        foreach ($consumiPerLotto as $lottoProdotto => $consumi) {
+            $carico = $carichi[$lottoProdotto] ?? null;
+            $out[] = [
+                'lotto' => $lottoProdotto,
+                'articolo' => $carico?->articolo ?? ($consumi[0]->articoloProdotto ?? ''),
+                'data' => $carico?->data ?? ($consumi[0]->data ?? null),
+                'quantita_prodotta' => $carico?->quantita,
+                'componenti' => array_map(static fn (MovimentoLotto $c) => [
+                    'articolo' => $c->articolo,
+                    'lotto' => $c->lotto,
+                    'quantita' => $c->quantita,
+                    'um' => $c->um,
+                ], $consumi),
+            ];
+        }
+
+        return $out;
     }
 
     /**

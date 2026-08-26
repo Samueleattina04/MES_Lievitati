@@ -94,6 +94,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/tracciabilita', [TracciabilitaController::class, 'index'])
         ->middleware('can:vedere-genealogia')
         ->name('tracciabilita.index');
+    // Download del file per l'importazione in Omni (una riga per lotto, componenti in orizzontale).
+    Route::get('/tracciabilita/omni', [TracciabilitaController::class, 'omni'])
+        ->middleware('can:vedere-genealogia')
+        ->name('tracciabilita.omni');
 
     // Export tracciati (§10): SOLO chi ha il permesso 'esportare' (backoffice + admin, NON pianificazione).
     // Un tracciato per gestionale di destinazione ('esolver' | 'omni').

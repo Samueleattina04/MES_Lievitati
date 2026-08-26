@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Tracciabilita\OmniExport;
 use App\Tracciabilita\TracciabilitaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+use Throwable;
 
 /**
  * Tracciabilita' lotto dal gestionale (§6-bis): dato il lotto di un prodotto finito, ricostruisce
- * carichi e scarichi risalendo l'intera distinta dai movimenti di magazzino ESOLVER. Base per il
- * futuro export nel tracciato Omni.
+ * carichi e scarichi risalendo l'intera distinta dai movimenti di magazzino ESOLVER, e genera il file
+ * per l'importazione in Omni (una riga per lotto di produzione, componenti in orizzontale).
  */
 class TracciabilitaController extends Controller
 {
@@ -23,8 +27,34 @@ class TracciabilitaController extends Controller
         return Inertia::render('Tracciabilita/Index', [
             'lotto' => $lotto,
             'risultato' => $lotto !== '' ? $tracciabilita->albero($lotto) : null,
-            // Omni: bottone di export in attesa del tracciato reale (nessun formato configurato).
-            'omniPronto' => false,
+            'omniPronto' => true,
         ]);
+    }
+
+    /** Scarica il file per l'importazione in Omni per il lotto indicato. */
+    public function omni(Request $request, TracciabilitaService $tracciabilita): SymfonyResponse
+    {
+        $lotto = trim((string) $request->query('lotto', ''));
+        if ($lotto === '') {
+            return back()->with('error', 'Indicare un lotto per generare il file Omni.');
+        }
+
+        try {
+            $res = $tracciabilita->albero($lotto);
+            if (! $res['trovato']) {
+                return back()->with('error', "Nessun movimento trovato per il lotto {$lotto}.");
+            }
+
+            $csv = OmniExport::csv($res['produzioni'], (array) config('mes.export.omni'));
+
+            return response($csv, 200, [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="omni_'.$lotto.'.csv"',
+            ]);
+        } catch (Throwable $e) {
+            Log::error('Export Omni fallito', ['lotto' => $lotto, 'errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
+
+            return back()->with('error', 'Generazione file Omni non riuscita: '.$e->getMessage());
+        }
     }
 }
