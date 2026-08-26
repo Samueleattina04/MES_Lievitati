@@ -90,13 +90,38 @@ final class TracciabilitaServiceTest extends TestCase
         self::assertFalse($res['trovato']);
     }
 
-    public function test_export_omni_una_riga_per_lotto_con_componenti_orizzontali(): void
+    public function test_export_omni_due_fogli_orizzontale_e_lungo(): void
     {
         $res = $this->service()->albero('PAN-1');
-        $csv = \App\Tracciabilita\OmniExport::csv($res['produzioni'], ['includi_data' => false]);
+        $fogli = \App\Tracciabilita\OmniExport::fogli($res['produzioni']);
 
-        // Una riga per lotto di produzione, componenti come lotto*quantità in orizzontale.
-        self::assertStringContainsString('PAN-1;IMP-1*8;INC-1*10', $csv);
-        self::assertStringContainsString('IMP-1;FAR-1*5;BUR-1*2', $csv);
+        self::assertSame('Foglio di partenza', $fogli[0]['name']);
+        self::assertSame('Nuovo', $fogli[1]['name']);
+
+        // Foglio orizzontale: una riga per lotto, componenti come lotto*quantità (col 1 = lotto).
+        $orizz = $fogli[0]['rows'];
+        $rigaPan = null;
+        $rigaImp = null;
+        foreach ($orizz as $r) {
+            if (($r[1] ?? null) === 'PAN-1') {
+                $rigaPan = $r;
+            }
+            if (($r[1] ?? null) === 'IMP-1') {
+                $rigaImp = $r;
+            }
+        }
+        self::assertNotNull($rigaPan);
+        self::assertContains('IMP-1*8', $rigaPan);
+        self::assertContains('INC-1*10', $rigaPan);
+        self::assertNotNull($rigaImp);
+        self::assertContains('FAR-1*5', $rigaImp);
+        self::assertContains('BUR-1*2', $rigaImp);
+
+        // Foglio lungo: intestazione + una riga per componente (quantità come numero).
+        $lungo = $fogli[1]['rows'];
+        self::assertSame('Informazioni cronologiche', $lungo[0][0]);
+        self::assertSame('LE', $lungo[0][2]);
+        // Almeno una riga dettaglio con quantità numerica.
+        self::assertGreaterThanOrEqual(5, count($lungo)); // header + 4 componenti
     }
 }

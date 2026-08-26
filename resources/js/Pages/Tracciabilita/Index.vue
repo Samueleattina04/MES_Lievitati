@@ -41,6 +41,9 @@ const albero = computed(() => flatten(props.risultato?.nodo));
 const movimenti = computed(() => props.risultato?.movimenti || []);
 const trovato = computed(() => props.risultato?.trovato === true);
 
+// In tabella mostriamo solo la data (l'orario resta nel file Omni).
+const soloData = (d) => (d ? String(d).split(' ')[0] : '');
+
 const colore = {
     prodotto: 'text-indigo-700 font-semibold',
     semilavorato: 'text-indigo-500',
@@ -93,7 +96,7 @@ const colore = {
                     Nessun movimento trovato per il lotto "{{ lotto }}". Verifica il codice lotto del prodotto finito.
                 </div>
 
-                <div v-if="trovato" class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div v-if="trovato" class="space-y-6">
                     <!-- Albero distinta (cosa è stato usato) -->
                     <div class="rounded-lg bg-white p-5 shadow-sm">
                         <h3 class="mb-3 font-semibold text-gray-800">Distinta risalita (cosa è stato usato)</h3>
@@ -109,33 +112,33 @@ const colore = {
                     <!-- Tutti i movimenti (carichi/scarichi) -->
                     <div class="rounded-lg bg-white p-5 shadow-sm">
                         <h3 class="mb-3 font-semibold text-gray-800">Movimenti di magazzino ({{ movimenti.length }})</h3>
-                        <div class="max-h-[28rem] overflow-auto">
-                            <table class="w-full text-xs">
-                                <thead class="sticky top-0 bg-white text-left uppercase text-gray-400">
+                        <div class="max-h-[34rem] overflow-auto rounded-lg border border-gray-100">
+                            <table class="w-full text-sm">
+                                <thead class="sticky top-0 z-10 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                                     <tr>
-                                        <th class="py-1">Tipo</th>
-                                        <th>Articolo</th>
-                                        <th>Lotto</th>
-                                        <th class="text-right">Qtà</th>
-                                        <th>Mag.</th>
-                                        <th>Data</th>
+                                        <th class="px-4 py-2.5">Tipo</th>
+                                        <th class="px-4 py-2.5">Articolo</th>
+                                        <th class="px-4 py-2.5">Lotto</th>
+                                        <th class="px-4 py-2.5 text-right">Quantità</th>
+                                        <th class="px-4 py-2.5 text-center">Magazzino</th>
+                                        <th class="px-4 py-2.5">Data</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
-                                    <tr v-for="(m, i) in movimenti" :key="i">
-                                        <td class="py-1">
+                                    <tr v-for="(m, i) in movimenti" :key="i" class="hover:bg-gray-50">
+                                        <td class="px-4 py-2">
                                             <span
-                                                class="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                                                class="rounded px-2 py-0.5 text-xs font-semibold"
                                                 :class="m.tipo === 'carico' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'"
                                             >
                                                 {{ m.tipo === 'carico' ? 'CARICO' : 'SCARICO' }}
                                             </span>
                                         </td>
-                                        <td class="font-medium">{{ m.articolo }}</td>
-                                        <td class="font-mono">{{ m.lotto }}</td>
-                                        <td class="text-right tabular-nums">{{ m.quantita }} {{ m.um }}</td>
-                                        <td>{{ m.magazzino }}</td>
-                                        <td>{{ m.data }}</td>
+                                        <td class="px-4 py-2 font-medium text-gray-800">{{ m.articolo }}</td>
+                                        <td class="px-4 py-2 font-mono text-gray-600">{{ m.lotto }}</td>
+                                        <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums">{{ m.quantita }} {{ m.um }}</td>
+                                        <td class="px-4 py-2 text-center">{{ m.magazzino }}</td>
+                                        <td class="whitespace-nowrap px-4 py-2 text-gray-500">{{ soloData(m.data) }}</td>
                                     </tr>
                                 </tbody>
                             </table>

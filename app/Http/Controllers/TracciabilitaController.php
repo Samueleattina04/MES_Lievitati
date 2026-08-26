@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Support\XlsxWriter;
 use App\Tracciabilita\OmniExport;
 use App\Tracciabilita\TracciabilitaService;
 use Illuminate\Http\Request;
@@ -45,11 +46,11 @@ class TracciabilitaController extends Controller
                 return back()->with('error', "Nessun movimento trovato per il lotto {$lotto}.");
             }
 
-            $csv = OmniExport::csv($res['produzioni'], (array) config('mes.export.omni'));
+            $xlsx = XlsxWriter::scrivi(OmniExport::fogli($res['produzioni'], (array) config('mes.export.omni')));
 
-            return response($csv, 200, [
-                'Content-Type' => 'text/csv',
-                'Content-Disposition' => 'attachment; filename="omni_'.$lotto.'.csv"',
+            return response($xlsx, 200, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => 'attachment; filename="omni_'.$lotto.'.xlsx"',
             ]);
         } catch (Throwable $e) {
             Log::error('Export Omni fallito', ['lotto' => $lotto, 'errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);

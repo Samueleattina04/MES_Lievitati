@@ -105,7 +105,7 @@ final class SqlServerMovimentiAdapter implements MovimentiLottoSourceInterface
             return null;
         }
         try {
-            return \Illuminate\Support\Carbon::parse((string) $valore)->format('d/m/Y');
+            return \Illuminate\Support\Carbon::parse((string) $valore)->format('d/m/Y H.i.s');
         } catch (\Throwable) {
             return (string) $valore;
         }
