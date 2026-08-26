@@ -121,6 +121,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tracciabilita' lotto (movimenti di magazzino ESOLVER, §6-bis)
+    |--------------------------------------------------------------------------
+    |
+    | Ricostruzione carichi/scarichi di un lotto dai movimenti reali del gestionale
+    | (MovimMagLotto + MovimMagazzino). Regole dedotte dai dati reali:
+    |   - TipoMovMag = 2  -> CARICO  (versamento "Carico da produzione")
+    |   - TipoMovMag = 3  -> SCARICO (consumo   "Consumo per produzione")
+    | Il legame componente->prodotto e' RifLottoPFAlfanum (lotto del prodotto finito/semilavorato);
+    | ricorrendo si risale l'intera distinta con i lotti realmente usati. 'max_livelli' e' la guardia
+    | anti-loop sulla profondita'. 'adapter' segue la stessa sorgente delle giacenze (sqlsrv|fixture).
+    */
+    'tracciabilita' => [
+        'adapter' => env('MES_TRACCIABILITA_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')),
+        'tipo_mov_carico' => (int) env('MES_TRACC_TIPO_CARICO', 2),
+        'tipo_mov_scarico' => (int) env('MES_TRACC_TIPO_SCARICO', 3),
+        'max_livelli' => (int) env('MES_TRACC_MAX_LIVELLI', 12),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
     |

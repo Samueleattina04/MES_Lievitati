@@ -19,6 +19,10 @@ use App\Stock\Contracts\StockSourceAdapterInterface;
 use App\Stock\FixtureStockAdapter;
 use App\Stock\LottiProdottoSemilavoratoSource;
 use App\Stock\SqlServerStockAdapter;
+use App\Tracciabilita\Contracts\MovimentiLottoSourceInterface;
+use App\Tracciabilita\FixtureMovimentiAdapter;
+use App\Tracciabilita\SqlServerMovimentiAdapter;
+use App\Tracciabilita\TracciabilitaService;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -68,6 +72,25 @@ class MesServiceProvider extends ServiceProvider
                 ),
             };
         });
+
+        // Movimenti di magazzino per lotto (§6-bis): tracciabilita' carichi/scarichi da ESOLVER.
+        $this->app->singleton(MovimentiLottoSourceInterface::class, function (): MovimentiLottoSourceInterface {
+            $config = (array) config('mes.tracciabilita');
+            $driver = (string) ($config['adapter'] ?? 'sqlsrv');
+
+            return match ($driver) {
+                'sqlsrv' => new SqlServerMovimentiAdapter(DB::connection('sqlsrv_gestionale'), $config),
+                'fixture' => new FixtureMovimentiAdapter(),
+                default => throw new InvalidArgumentException(
+                    "Adapter tracciabilita non valido: '{$driver}'. Valori ammessi: 'sqlsrv', 'fixture'."
+                ),
+            };
+        });
+
+        $this->app->bind(TracciabilitaService::class, fn (Application $app) => new TracciabilitaService(
+            $app->make(MovimentiLottoSourceInterface::class),
+            (int) config('mes.tracciabilita.max_livelli', 12),
+        ));
 
         // Sorgente per riconoscere i lotti di semilavorato gia' esistenti (§5.3, change #3).
         $this->app->singleton(LottoSemilavoratoSourceInterface::class, function (): LottoSemilavoratoSourceInterface {

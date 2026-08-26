@@ -198,6 +198,18 @@ cast `dati` → array; relazioni `user()`, `soggetto()` (morphTo).
     versamenti); `EsportazioneService` con template raggruppati per **gestionale** (`esolver`, `omni`):
     `gestionaliConfigurati()`, `genera($ordine,$gestionale)`, `esporta($ordine,$gestionale)`. Restano nel
     repo (non piu' registrati) i template generici `ConsumiLottiCsvTemplate`/`VersamentiCsvTemplate`/`TracciatoJsonTemplate`/`CsvWriter`.
+- **`app/Tracciabilita`** — Tracciabilità lotto dal gestionale (§6-bis).
+  - `Contracts\MovimentiLottoSourceInterface` (`consumiPerProdotti()`, `carichiPerLotti()`);
+    `SqlServerMovimentiAdapter` (query `MovimMagLotto`+`MovimMagazzino` su `sqlsrv_gestionale`),
+    `FixtureMovimentiAdapter` (dati in memoria per dev/test); `MovimentoLotto` (DTO);
+    `TracciabilitaService::albero($lotto)` ricostruisce carichi/scarichi risalendo la distinta (BFS).
+  - Fonte reale: `MovimMagLotto` (dettaglio lotto: `CodArt`+`RifLottoAlfanum`, e `RifLottoPFAlfanum`=lotto
+    prodotto) unita a `MovimMagazzino` (testata) su `DBGruppo+IdDocumento+IdRigaDoc+IdRigaMag`.
+    Carico/scarico = `TipoMovMag` (2=carico "Carico da produzione", 3=scarico "Consumo per produzione").
+    Ricorsione via `RifLottoPFAlfanum` -> `RifLottoAlfanum`. Config in `config('mes.tracciabilita')`.
+  - UI: pagina `Tracciabilita/Index` (rotta `tracciabilita.index`, `can:vedere-genealogia`): cerca per
+    lotto del finito, mostra l'albero della distinta risalita + tabella movimenti. Bottone "Scarica per
+    Omni" presente ma **disabilitato** (in attesa del tracciato Omni).
 - **`app/Enums`** — `RuoloUtente` (con `label()`, `usaPin()`, e i metodi di permesso descritti in §8),
   `StatoOrdine`, `StatoFase`, `TipoArticolo`, `OrigineOrdine` (tutti string-backed, con `label()`).
 - **`app/Support\LogEventi::registra()`** — helper che scrive righe in `log_eventi`.

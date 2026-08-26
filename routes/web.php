@@ -10,6 +10,7 @@ use App\Http\Controllers\EsportazioneController;
 use App\Http\Controllers\GenealogiaController;
 use App\Http\Controllers\OrdineController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TracciabilitaController;
 use App\Http\Controllers\Operatore\EsecuzioneController;
 use App\Http\Controllers\Operatore\OperatoreAuthController;
 use App\Http\Controllers\Operatore\SplitController;
@@ -88,6 +89,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/genealogia', [GenealogiaController::class, 'index'])
         ->middleware('can:vedere-genealogia')
         ->name('genealogia.index');
+
+    // Tracciabilita' lotto dal gestionale (§6-bis): carichi/scarichi ESOLVER per lotto prodotto finito.
+    Route::get('/tracciabilita', [TracciabilitaController::class, 'index'])
+        ->middleware('can:vedere-genealogia')
+        ->name('tracciabilita.index');
 
     // Export tracciati (§10): SOLO chi ha il permesso 'esportare' (backoffice + admin, NON pianificazione).
     // Un tracciato per gestionale di destinazione ('esolver' | 'omni').

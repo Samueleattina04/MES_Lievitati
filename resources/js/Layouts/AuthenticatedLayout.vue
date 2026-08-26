@@ -64,6 +64,13 @@ const can = computed(() => usePage().props.auth?.can ?? {});
                                     Genealogia
                                 </NavLink>
                                 <NavLink
+                                    v-if="can.vedereGenealogia"
+                                    :href="route('tracciabilita.index')"
+                                    :active="route().current('tracciabilita.*')"
+                                >
+                                    Tracciabilità
+                                </NavLink>
+                                <NavLink
                                     v-if="can.configurare"
                                     :href="route('admin.index')"
                                     :active="route().current('admin.*')"
@@ -198,6 +205,13 @@ const can = computed(() => usePage().props.auth?.can ?? {});
                             :active="route().current('genealogia.*')"
                         >
                             Genealogia
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            v-if="can.vedereGenealogia"
+                            :href="route('tracciabilita.index')"
+                            :active="route().current('tracciabilita.*')"
+                        >
+                            Tracciabilità
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
                             v-if="can.configurare"
