@@ -146,6 +146,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Gestionale Omni (Microsoft Access via ODBC, sola lettura) — §6-bis
+    |--------------------------------------------------------------------------
+    |
+    | Mappatura lotto fornitore -> lotto Omni per l'export Omni: dal lotto fornitore (che ha ESOLVER)
+    | si cerca in Omni il lotto Omni associato e si prende, in automatico, il piu' VECCHIO con
+    | giacenza > 0 (FIFO). Connessione ODBC (DSN Access), credenziali dal .env (ACCESS_DSN/USERNAME/
+    | PASSWORD). La mappatura tabella/colonne va compilata dopo aver ispezionato il DB con `omni:schema`.
+    */
+    'omni' => [
+        'adapter' => env('MES_OMNI_ADAPTER', 'fixture'), // 'access' (reale) | 'fixture' (dev/test)
+        'connessione' => [
+            'dsn' => env('ACCESS_DSN', ''),
+            'username' => env('ACCESS_USERNAME', ''),
+            'password' => env('ACCESS_PASSWORD', ''),
+        ],
+        // Mappatura tabella lotti Omni (da compilare: nomi reali dal comando omni:schema).
+        'lotti' => [
+            'tabella' => env('MES_OMNI_TABELLA', ''),
+            'col_articolo' => env('MES_OMNI_COL_ARTICOLO', ''),
+            'col_lotto_fornitore' => env('MES_OMNI_COL_LOTTO_FORNITORE', ''),
+            'col_lotto_omni' => env('MES_OMNI_COL_LOTTO_OMNI', ''),
+            'col_data' => env('MES_OMNI_COL_DATA', ''),          // per il FIFO (piu' vecchio)
+            'col_giacenza' => env('MES_OMNI_COL_GIACENZA', ''),  // per il filtro giacenza > 0
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
     |
