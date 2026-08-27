@@ -23,7 +23,9 @@ class OmniSchemaCommand extends Command
 {
     protected $signature = 'omni:schema
         {--table= : Nome tabella da ispezionare (colonne + esempio). Se assente, elenca le tabelle}
-        {--sample=5 : Righe di esempio (TOP N) quando si ispeziona una tabella}';
+        {--sample=5 : Righe di esempio (TOP N) quando si ispeziona una tabella}
+        {--where-col= : Colonna su cui filtrare (con --where-val)}
+        {--where-val= : Valore del filtro (parametrizzato)}';
 
     protected $description = 'Ispeziona il DB Omni (Access via ODBC): elenca le tabelle o le colonne di una tabella.';
 
@@ -111,8 +113,24 @@ class OmniSchemaCommand extends Command
         }
         $sample = max(1, min($sample, 50));
 
+        $whereCol = trim((string) ($this->option('where-col') ?? ''));
+        $whereVal = $this->option('where-val');
+        $sql = "SELECT TOP {$sample} * FROM [{$table}]";
+        $params = [];
+        if ($whereCol !== '') {
+            if (! preg_match('/^[A-Za-z0-9_ ]+$/', $whereCol)) {
+                $this->error("Nome colonna filtro non valido: {$whereCol}");
+
+                return self::FAILURE;
+            }
+            $sql .= " WHERE [{$whereCol}] = ?";
+            $params = [$whereVal];
+        }
+
         try {
-            $rows = $pdo->query("SELECT TOP {$sample} * FROM [{$table}]")->fetchAll(PDO::FETCH_ASSOC);
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
             $this->error('Errore leggendo la tabella: '.$e->getMessage());
 
