@@ -135,7 +135,15 @@ class OmniSchemaCommand extends Command
         $this->newLine();
         $this->line("<comment>Prime righe di esempio:</comment>");
         foreach ($rows as $i => $row) {
-            $this->line('  #'.($i + 1).' '.json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            // I dati Access sono in Windows-1252: converto in UTF-8 per non far fallire il JSON.
+            $row = array_map(static function ($v) {
+                if (is_string($v) && ! mb_check_encoding($v, 'UTF-8')) {
+                    return mb_convert_encoding($v, 'UTF-8', 'Windows-1252');
+                }
+
+                return $v;
+            }, $row);
+            $this->line('  #'.($i + 1).' '.json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
         }
 
         return self::SUCCESS;
