@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Omni\TraduttoreLottiOmni;
 use App\Support\XlsxWriter;
 use App\Tracciabilita\OmniExport;
 use App\Tracciabilita\TracciabilitaService;
@@ -33,7 +34,7 @@ class TracciabilitaController extends Controller
     }
 
     /** Scarica il file per l'importazione in Omni per il lotto indicato. */
-    public function omni(Request $request, TracciabilitaService $tracciabilita): SymfonyResponse
+    public function omni(Request $request, TracciabilitaService $tracciabilita, TraduttoreLottiOmni $traduttore): SymfonyResponse
     {
         $lotto = trim((string) $request->query('lotto', ''));
         if ($lotto === '') {
@@ -46,7 +47,11 @@ class TracciabilitaController extends Controller
                 return back()->with('error', "Nessun movimento trovato per il lotto {$lotto}.");
             }
 
-            $xlsx = XlsxWriter::scrivi(OmniExport::fogli($res['produzioni'], (array) config('mes.export.omni')));
+            // Traduce i lotti fornitore (ESOLVER) nei lotti Omni (FIFO dal DB Omni); i semilavorati
+            // non presenti tra i carichi restano col loro lotto.
+            $produzioni = $traduttore->applica($res['produzioni']);
+
+            $xlsx = XlsxWriter::scrivi(OmniExport::fogli($produzioni, (array) config('mes.export.omni')));
 
             return response($xlsx, 200, [
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

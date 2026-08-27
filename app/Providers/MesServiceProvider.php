@@ -9,6 +9,9 @@ use App\Bom\FixtureBomAdapter;
 use App\Bom\SqlServerBomAdapter;
 use App\Export\EsportazioneService;
 use App\Export\Templates\EsolverVersamentiCsvTemplate;
+use App\Omni\AccessLottoOmniAdapter;
+use App\Omni\Contracts\LottoOmniSourceInterface;
+use App\Omni\FixtureLottoOmniAdapter;
 use App\Ordini\OrderExplosionPlanner;
 use App\Produzione\ChiusuraMassivaService;
 use App\Produzione\FaseWorkflowService;
@@ -91,6 +94,20 @@ class MesServiceProvider extends ServiceProvider
             $app->make(MovimentiLottoSourceInterface::class),
             (int) config('mes.tracciabilita.max_livelli', 12),
         ));
+
+        // Mappatura lotto ESOLVER -> lotto Omni (§6-bis): DB Omni (Access ODBC) o fixture (dev/test).
+        $this->app->singleton(LottoOmniSourceInterface::class, function (): LottoOmniSourceInterface {
+            $config = (array) config('mes.omni');
+            $driver = (string) ($config['adapter'] ?? 'fixture');
+
+            return match ($driver) {
+                'access' => new AccessLottoOmniAdapter((array) ($config['connessione'] ?? []), (array) ($config['lotti'] ?? [])),
+                'fixture' => new FixtureLottoOmniAdapter(),
+                default => throw new InvalidArgumentException(
+                    "Adapter Omni non valido: '{$driver}'. Valori ammessi: 'access', 'fixture'."
+                ),
+            };
+        });
 
         // Sorgente per riconoscere i lotti di semilavorato gia' esistenti (§5.3, change #3).
         $this->app->singleton(LottoSemilavoratoSourceInterface::class, function (): LottoSemilavoratoSourceInterface {

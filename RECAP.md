@@ -209,10 +209,17 @@ cast `dati` → array; relazioni `user()`, `soggetto()` (morphTo).
     Ricorsione via `RifLottoPFAlfanum` -> `RifLottoAlfanum`. Config in `config('mes.tracciabilita')`.
   - UI: pagina `Tracciabilita/Index` (rotta `tracciabilita.index`, `can:vedere-genealogia`): cerca per
     lotto del finito, mostra l'albero della distinta risalita + tabella movimenti.
-  - **Export Omni** (`OmniExport::csv()` + rotta `tracciabilita.omni`, bottone "Scarica per Omni"):
-    genera il file d'importazione nel formato reale aziendale — **una riga per lotto di produzione**
-    (finito + semilavorati), i componenti in **orizzontale** come `lotto*quantità` (decimale con
-    virgola), colonne `[data] ; lotto ; comp1 ; comp2 ; …`, separatore `;`. Config `mes.export.omni`.
+  - **Export Omni** (`OmniExport::fogli()` + `Support\XlsxWriter` + rotta `tracciabilita.omni`, bottone
+    "Scarica per Omni"): genera un **.xlsx a due fogli** nel formato reale aziendale — "Foglio di
+    partenza" (orizzontale: `data · lotto · componenti lotto*quantità`, decimale con virgola) e "Nuovo"
+    (lungo: una riga per componente). Config file in `mes.export.omni`.
+  - **Mappatura lotto ESOLVER → lotto Omni** (`app/Omni`, §6-bis): prima di generare il file, i lotti dei
+    componenti vengono tradotti nel lotto interno Omni via `TraduttoreLottiOmni` + `LottoOmniSourceInterface`
+    (`AccessLottoOmniAdapter` = DB Omni **Microsoft Access via ODBC**, sola lettura; `FixtureLottoOmniAdapter`
+    = dev/test). Query su `T_Linkfattlotti`: match esatto `CodArtEsolver`+`CodLottoEsolver`, filtro
+    `Lotto chiuso = 0` (con giacenza), FIFO su `Data carico`, restituisce `Lotto entrata` (lotto Omni). I
+    lotti non trovati (es. semilavorati) restano invariati. Connessione/mappatura in `config('mes.omni')`
+    (`ACCESS_DSN`/`MES_OMNI_ADAPTER=access` nel `.env`). Ispezione schema: comando `omni:schema`.
 - **`app/Enums`** — `RuoloUtente` (con `label()`, `usaPin()`, e i metodi di permesso descritti in §8),
   `StatoOrdine`, `StatoFase`, `TipoArticolo`, `OrigineOrdine` (tutti string-backed, con `label()`).
 - **`app/Support\LogEventi::registra()`** — helper che scrive righe in `log_eventi`.

@@ -161,14 +161,16 @@ return [
             'username' => env('ACCESS_USERNAME', ''),
             'password' => env('ACCESS_PASSWORD', ''),
         ],
-        // Mappatura tabella lotti Omni (da compilare: nomi reali dal comando omni:schema).
+        // Mappatura tabella lotti Omni (T_Linkfattlotti), colonne verificate sul DB reale.
+        // Match esatto su articolo+lotto ESOLVER; restituisce il lotto Omni (Lotto entrata); FIFO su
+        // Data carico; filtro giacenza = lotto non chiuso (Lotto chiuso = 0).
         'lotti' => [
-            'tabella' => env('MES_OMNI_TABELLA', ''),
-            'col_articolo' => env('MES_OMNI_COL_ARTICOLO', ''),
-            'col_lotto_fornitore' => env('MES_OMNI_COL_LOTTO_FORNITORE', ''),
-            'col_lotto_omni' => env('MES_OMNI_COL_LOTTO_OMNI', ''),
-            'col_data' => env('MES_OMNI_COL_DATA', ''),          // per il FIFO (piu' vecchio)
-            'col_giacenza' => env('MES_OMNI_COL_GIACENZA', ''),  // per il filtro giacenza > 0
+            'tabella' => env('MES_OMNI_TABELLA', 'T_Linkfattlotti'),
+            'col_articolo' => env('MES_OMNI_COL_ARTICOLO', 'CodArtEsolver'),
+            'col_lotto' => env('MES_OMNI_COL_LOTTO', 'CodLottoEsolver'),
+            'col_lotto_omni' => env('MES_OMNI_COL_LOTTO_OMNI', 'Lotto entrata'),
+            'col_data' => env('MES_OMNI_COL_DATA', 'Data carico'),        // FIFO (piu' vecchio)
+            'col_lotto_chiuso' => env('MES_OMNI_COL_LOTTO_CHIUSO', 'Lotto chiuso'), // 0 = con giacenza
         ],
     ],
 
