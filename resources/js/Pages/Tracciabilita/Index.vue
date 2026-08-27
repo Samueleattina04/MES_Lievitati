@@ -1,6 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
 const props = defineProps({
@@ -9,6 +9,7 @@ const props = defineProps({
     omniPronto: { type: Boolean, default: false },
 });
 
+const flashError = computed(() => usePage().props.flash?.error);
 const ricerca = ref(props.lotto);
 
 function cerca() {
@@ -61,6 +62,8 @@ const colore = {
 
         <div class="py-8">
             <div class="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
+                <div v-if="flashError" class="rounded-lg bg-red-100 px-4 py-3 text-red-800">{{ flashError }}</div>
+
                 <div class="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
                     Inserisci il <strong>lotto del prodotto finito</strong>: il sistema recupera dal gestionale tutti i
                     <strong>carichi e scarichi</strong> e risale l'intera distinta con i lotti realmente utilizzati.
