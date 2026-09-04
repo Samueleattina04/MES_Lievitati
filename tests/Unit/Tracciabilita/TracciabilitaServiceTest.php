@@ -90,38 +90,37 @@ final class TracciabilitaServiceTest extends TestCase
         self::assertFalse($res['trovato']);
     }
 
-    public function test_export_omni_due_fogli_orizzontale_e_lungo(): void
+    public function test_export_omni_solo_foglio_nuovo_una_riga_per_componente(): void
     {
         $res = $this->service()->albero('PAN-1');
         $fogli = \App\Tracciabilita\OmniExport::fogli($res['produzioni']);
 
-        self::assertSame('Foglio di partenza', $fogli[0]['name']);
-        self::assertSame('Nuovo', $fogli[1]['name']);
+        // Un solo foglio, "Nuovo" (il "Foglio di partenza" orizzontale non serve più).
+        self::assertCount(1, $fogli);
+        self::assertSame('Nuovo', $fogli[0]['name']);
 
-        // Foglio orizzontale: una riga per lotto, componenti come lotto*quantità (col 1 = lotto).
-        $orizz = $fogli[0]['rows'];
-        $rigaPan = null;
-        $rigaImp = null;
-        foreach ($orizz as $r) {
-            if (($r[1] ?? null) === 'PAN-1') {
-                $rigaPan = $r;
-            }
-            if (($r[1] ?? null) === 'IMP-1') {
-                $rigaImp = $r;
-            }
-        }
-        self::assertNotNull($rigaPan);
-        self::assertContains('IMP-1*8', $rigaPan);
-        self::assertContains('INC-1*10', $rigaPan);
-        self::assertNotNull($rigaImp);
-        self::assertContains('FAR-1*5', $rigaImp);
-        self::assertContains('BUR-1*2', $rigaImp);
+        $righe = $fogli[0]['rows'];
+        // Intestazione.
+        self::assertSame('Informazioni cronologiche', $righe[0][0]);
+        self::assertSame('LE', $righe[0][2]);
 
-        // Foglio lungo: intestazione + una riga per componente (quantità come numero).
-        $lungo = $fogli[1]['rows'];
-        self::assertSame('Informazioni cronologiche', $lungo[0][0]);
-        self::assertSame('LE', $lungo[0][2]);
-        // Almeno una riga dettaglio con quantità numerica.
-        self::assertGreaterThanOrEqual(5, count($lungo)); // header + 4 componenti
+        // Una riga per componente: [ts, lottoProdotto, lottoComponente, quantità(numero), note, operatore].
+        // Cerca la riga PAN-1 -> IMP-1 (qtà 8) e IMP-1 -> FAR-1 (qtà 5).
+        $trovaComp = static function (array $righe, string $lottoProdotto, string $lottoComp): ?array {
+            foreach ($righe as $r) {
+                if (($r[1] ?? null) === $lottoProdotto && ($r[2] ?? null) === $lottoComp) {
+                    return $r;
+                }
+            }
+
+            return null;
+        };
+        $r1 = $trovaComp($righe, 'PAN-1', 'IMP-1');
+        self::assertNotNull($r1);
+        self::assertEqualsWithDelta(8.0, (float) $r1[3], 1e-9);
+        self::assertNotNull($trovaComp($righe, 'IMP-1', 'FAR-1'));
+
+        // header + 4 componenti (IMPASTO, INCARTO, FARINA, BURRO).
+        self::assertCount(5, $righe);
     }
 }

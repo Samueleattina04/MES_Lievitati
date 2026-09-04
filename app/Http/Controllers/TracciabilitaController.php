@@ -55,7 +55,7 @@ class TracciabilitaController extends Controller
 
             return response($xlsx, 200, [
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'Content-Disposition' => 'attachment; filename="omni_'.$lotto.'.xlsx"',
+                'Content-Disposition' => 'attachment; filename="TracciabilitaIbrida.xlsx"',
             ]);
         } catch (Throwable $e) {
             Log::error('Export Omni fallito', ['lotto' => $lotto, 'errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
