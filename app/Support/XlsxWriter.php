@@ -15,13 +15,18 @@ final class XlsxWriter
 {
     /**
      * @param  list<array{name:string, rows:list<list<string|int|float|null>>}>  $fogli
+     * @param  bool  $macroEnabled  Se true genera un .xlsm (workbook macro-enabled) invece di .xlsx.
      */
-    public static function scrivi(array $fogli): string
+    public static function scrivi(array $fogli, bool $macroEnabled = false): string
     {
         if ($fogli === []) {
             $fogli = [['name' => 'Foglio1', 'rows' => []]];
         }
         $n = count($fogli);
+
+        $tipoWorkbook = $macroEnabled
+            ? 'application/vnd.ms-excel.sheet.macroEnabled.main+xml'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml';
 
         $path = tempnam(sys_get_temp_dir(), 'xlsx');
         if ($path === false) {
@@ -42,7 +47,7 @@ final class XlsxWriter
             .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             .'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             .'<Default Extension="xml" ContentType="application/xml"/>'
-            .'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            .'<Override PartName="/xl/workbook.xml" ContentType="'.$tipoWorkbook.'"/>'
             .$overrides
             .'</Types>');
 
