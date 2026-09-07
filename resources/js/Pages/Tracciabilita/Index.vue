@@ -7,9 +7,10 @@ const props = defineProps({
     lotto: { type: String, default: '' },
     risultato: { type: Object, default: null },
     omniPronto: { type: Boolean, default: false },
+    errore: { type: String, default: null },
 });
 
-const flashError = computed(() => usePage().props.flash?.error);
+const messaggioErrore = computed(() => props.errore || usePage().props.flash?.error);
 const ricerca = ref(props.lotto);
 
 function cerca() {
@@ -62,7 +63,7 @@ const colore = {
 
         <div class="py-8">
             <div class="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
-                <div v-if="flashError" class="rounded-lg bg-red-100 px-4 py-3 text-red-800">{{ flashError }}</div>
+                <div v-if="messaggioErrore" class="rounded-lg bg-red-100 px-4 py-3 text-red-800">{{ messaggioErrore }}</div>
 
                 <div class="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
                     Inserisci il <strong>lotto del prodotto finito</strong>: il sistema recupera dal gestionale tutti i

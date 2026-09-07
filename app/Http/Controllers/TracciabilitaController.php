@@ -26,10 +26,26 @@ class TracciabilitaController extends Controller
     {
         $lotto = trim((string) $request->query('lotto', ''));
 
+        $risultato = null;
+        $errore = null;
+        if ($lotto !== '') {
+            try {
+                $risultato = $tracciabilita->albero($lotto);
+            } catch (Throwable $e) {
+                Log::error('Tracciabilità fallita', [
+                    'lotto' => $lotto,
+                    'errore' => $e->getMessage(),
+                    'file' => $e->getFile().':'.$e->getLine(),
+                ]);
+                $errore = 'Errore nel recupero della tracciabilità: '.$e->getMessage();
+            }
+        }
+
         return Inertia::render('Tracciabilita/Index', [
             'lotto' => $lotto,
-            'risultato' => $lotto !== '' ? $tracciabilita->albero($lotto) : null,
+            'risultato' => $risultato,
             'omniPronto' => true,
+            'errore' => $errore,
         ]);
     }
 
