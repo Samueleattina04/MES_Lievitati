@@ -24,6 +24,8 @@ class TracciabilitaController extends Controller
 {
     public function index(Request $request, TracciabilitaService $tracciabilita): Response
     {
+        self::estendiTempoEsecuzione();
+
         $lotto = trim((string) $request->query('lotto', ''));
 
         $risultato = null;
@@ -52,6 +54,8 @@ class TracciabilitaController extends Controller
     /** Scarica il file per l'importazione in Omni per il lotto indicato. */
     public function omni(Request $request, TracciabilitaService $tracciabilita, TraduttoreLottiOmni $traduttore): SymfonyResponse
     {
+        self::estendiTempoEsecuzione();
+
         $lotto = trim((string) $request->query('lotto', ''));
         if ($lotto === '') {
             return back()->with('error', 'Indicare un lotto per generare il file Omni.');
@@ -77,6 +81,19 @@ class TracciabilitaController extends Controller
             Log::error('Export Omni fallito', ['lotto' => $lotto, 'errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
 
             return back()->with('error', 'Generazione file Omni non riuscita: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Un albero grande fa piu' scansioni sui movimenti ESOLVER: il default PHP di 30s non basta.
+     * Alza il limite (config, default 180s). Su Windows/IIS il tempo di attesa sulle query di rete
+     * conta nel max_execution_time, quindi qui e' il punto giusto per estenderlo.
+     */
+    private static function estendiTempoEsecuzione(): void
+    {
+        $secondi = (int) config('mes.tracciabilita.timeout', 180);
+        if ($secondi > 0 && function_exists('set_time_limit')) {
+            @set_time_limit($secondi);
         }
     }
 }

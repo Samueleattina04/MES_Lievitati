@@ -142,6 +142,13 @@ return [
         'tipo_mov_carico' => (int) env('MES_TRACC_TIPO_CARICO', 2),
         'tipo_mov_scarico' => (int) env('MES_TRACC_TIPO_SCARICO', 3),
         'max_livelli' => (int) env('MES_TRACC_MAX_LIVELLI', 12),
+
+        // Tempo massimo (secondi) concesso alla ricostruzione della tracciabilita': un albero
+        // grande fa piu' scansioni sui movimenti ESOLVER (tabelle enormi, colonne lotto non
+        // indicizzate, gestionale in sola lettura -> non si possono aggiungere indici) e il
+        // default PHP di 30s puo' non bastare. Alzato via set_time_limit() nel controller.
+        // NB: se IIS FastCGI abbatte prima la richiesta, alzare anche activityTimeout/requestTimeout.
+        'timeout' => (int) env('MES_TRACC_TIMEOUT', 180),
     ],
 
     /*

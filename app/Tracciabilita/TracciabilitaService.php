@@ -174,6 +174,21 @@ final class TracciabilitaService
             }
         }
 
+        // Ordinamento cronologico fatto qui (una volta) invece che in SQL a ogni scansione:
+        // la data e' gia' formattata 'd/m/Y H.i.s', quindi si riparsa per confrontarla.
+        usort($out, static fn (array $a, array $b) => self::chiaveData($a['data'] ?? null) <=> self::chiaveData($b['data'] ?? null));
+
         return $out;
+    }
+
+    /** Chiave ordinabile (timestamp) da una data 'd/m/Y H.i.s'; le date assenti vanno in fondo. */
+    private static function chiaveData(?string $data): int
+    {
+        if ($data === null || $data === '') {
+            return PHP_INT_MAX;
+        }
+        $dt = \DateTime::createFromFormat('d/m/Y H.i.s', $data);
+
+        return $dt !== false ? $dt->getTimestamp() : PHP_INT_MAX;
     }
 }

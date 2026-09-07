@@ -75,8 +75,11 @@ final class SqlServerMovimentiAdapter implements MovimentiLottoSourceInterface
                 AND MM.IdRigaMag   = ML.IdRigaMag
             WHERE {$colonnaFiltro} IN ({$ph})
               AND MM.TipoMovMag = ?
-            ORDER BY MM.DataRegistrazione, ML.CodArt
             SQL;
+            // Niente ORDER BY: le colonne lotto non sono indicizzate (gestionale in sola lettura) e
+            // ordinare aggiunge un sort sul risultato di una scansione pesante ad OGNI livello della
+            // ricostruzione. L'ordinamento cronologico per la tabella si fa una volta sola in PHP
+            // (TracciabilitaService::flatten()); l'albero e il file Omni non dipendono dall'ordine.
 
             $rows = $this->connection->select($sql, [...$chunk, $tipoMov]);
             foreach ($rows as $r) {
