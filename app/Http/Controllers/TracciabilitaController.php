@@ -51,11 +51,11 @@ class TracciabilitaController extends Controller
             // non presenti tra i carichi restano col loro lotto.
             $produzioni = $traduttore->applica($res['produzioni']);
 
-            $xlsm = XlsxWriter::scrivi(OmniExport::fogli($produzioni, (array) config('mes.export.omni')), macroEnabled: true);
+            $xlsx = XlsxWriter::scrivi(OmniExport::fogli($produzioni, (array) config('mes.export.omni')));
 
-            return response($xlsm, 200, [
-                'Content-Type' => 'application/vnd.ms-excel.sheet.macroEnabled.12',
-                'Content-Disposition' => 'attachment; filename="TracciabilitaIbrida.xlsm"',
+            return response($xlsx, 200, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => 'attachment; filename="TracciabilitaIbrida.xlsx"',
             ]);
         } catch (Throwable $e) {
             Log::error('Export Omni fallito', ['lotto' => $lotto, 'errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
