@@ -17,8 +17,8 @@ final class TraduttoreLottiOmniTest extends TestCase
     public function test_sostituisce_solo_i_lotti_mappati(): void
     {
         $source = new FixtureLottoOmniAdapter([
-            'PT0LI25|3126004810' => '2748.21726.819',       // farina: mappata
-            'ZUCCHEROSEMOLAT|L120618300' => '1500.20026.42', // zucchero: mappata
+            ['articolo' => 'PT0LI25', 'lotto_esolver' => '3126004810', 'lotto_omni' => '2748.21726.819'],       // farina: mappata
+            ['articolo' => 'ZUCCHEROSEMOLAT', 'lotto_esolver' => 'L120618300', 'lotto_omni' => '1500.20026.42'], // zucchero: mappata
         ]);
         $traduttore = new TraduttoreLottiOmni($source);
 

@@ -9,9 +9,15 @@ use PDO;
 
 /**
  * Adapter di PRODUZIONE verso il gestionale Omni (Microsoft Access via ODBC, sola lettura), §6-bis.
- * Mappa il lotto ESOLVER (articolo + lotto) al lotto interno Omni leggendo `T_Linkfattlotti`:
- * match esatto su `CodArtEsolver` + `CodLottoEsolver`, filtro giacenza = lotto non chiuso, ordine
- * FIFO su `Data carico`, restituisce `Lotto entrata`. Cache in-memory per non ripetere query uguali.
+ * Mappa il lotto ESOLVER (articolo + lotto) al lotto interno Omni leggendo `T_Linkfattlotti`, e
+ * garantisce che il lotto proposto abbia GIACENZA REALE > 0 (cosi' l'import in Omni non crea negativi).
+ *
+ * La giacenza si calcola sommando i movimenti del lotto in `T_MovimentoLotto` (`Valore Movimento`,
+ * +carico/-scarico) legati via `IDLinkfattlotti`. Selezione a due livelli:
+ *   1) match esatto articolo+lotto ESOLVER -> lotto Omni piu' VECCHIO (FIFO su `Data carico`) con giacenza > 0;
+ *   2) se quel lotto e' gia' negativo/esaurito su Omni, si risale per SOLO ARTICOLO al lotto Omni piu'
+ *      vecchio con giacenza > 0.
+ * Cache in-memory per non ripetere query uguali nello stesso export.
  */
 final class AccessLottoOmniAdapter implements LottoOmniSourceInterface
 {
@@ -22,7 +28,8 @@ final class AccessLottoOmniAdapter implements LottoOmniSourceInterface
 
     /**
      * @param  array<string,mixed>  $connessione  ['dsn','username','password']
-     * @param  array<string,mixed>  $mappa        ['tabella','col_articolo','col_lotto','col_lotto_omni','col_data','col_lotto_chiuso']
+     * @param  array<string,mixed>  $mappa        ['tabella','col_articolo','col_lotto','col_lotto_omni',
+     *                                             'col_data','col_pk','tabella_movimenti','col_valore','col_link']
      */
     public function __construct(
         private readonly array $connessione,
@@ -42,24 +49,57 @@ final class AccessLottoOmniAdapter implements LottoOmniSourceInterface
             return $this->cache[$chiave];
         }
 
+        // 1) Lotto Omni piu' vecchio CON GIACENZA per l'esatto articolo+lotto ESOLVER.
+        $res = $this->piuVecchioConGiacenza($art, $lotto);
+
+        // 2) Fallback: quel lotto non ha alcun lotto Omni con giacenza (negativo/esaurito) ->
+        //    si risale per SOLO ARTICOLO al lotto Omni piu' vecchio con giacenza.
+        if ($res === null) {
+            $res = $this->piuVecchioConGiacenza($art, null);
+        }
+
+        return $this->cache[$chiave] = $res;
+    }
+
+    /**
+     * Lotto Omni (`Lotto entrata`) piu' vecchio (FIFO su `Data carico`) con giacenza reale > 0.
+     * Se $lotto e' null il filtro e' sul solo articolo (fallback). Restituisce null se nessun lotto
+     * ha giacenza > 0.
+     */
+    private function piuVecchioConGiacenza(string $art, ?string $lotto): ?string
+    {
         $t = (string) $this->mappa['tabella'];
         $ca = (string) $this->mappa['col_articolo'];
         $cl = (string) $this->mappa['col_lotto'];
         $co = (string) $this->mappa['col_lotto_omni'];
         $cd = (string) $this->mappa['col_data'];
-        $cc = (string) $this->mappa['col_lotto_chiuso'];
+        $pk = (string) $this->mappa['col_pk'];
+        $tm = (string) $this->mappa['tabella_movimenti'];
+        $cv = (string) $this->mappa['col_valore'];
+        $ck = (string) $this->mappa['col_link'];
 
-        $sql = "SELECT TOP 1 [{$co}] AS lottoOmni FROM [{$t}] "
-            ."WHERE [{$ca}] = ? AND [{$cl}] = ? AND ([{$cc}] = 0 OR [{$cc}] IS NULL) "
-            ."ORDER BY [{$cd}] ASC";
+        $where = "L.[{$ca}] = ?";
+        $params = [$art];
+        if ($lotto !== null) {
+            $where .= " AND L.[{$cl}] = ?";
+            $params[] = $lotto;
+        }
+
+        // INNER JOIN + HAVING SUM(...) > 0: tiene solo i lotti con giacenza reale positiva.
+        // GROUP BY sulla PK del lotto = una riga per lotto fisico; ORDER BY Data carico ASC = FIFO.
+        // TOP 1 (con eventuali pari-merito) + fetchColumn = il piu' vecchio con giacenza.
+        $sql = "SELECT TOP 1 L.[{$co}] AS lottoOmni "
+            ."FROM [{$t}] AS L INNER JOIN [{$tm}] AS M ON M.[{$ck}] = L.[{$pk}] "
+            ."WHERE {$where} "
+            ."GROUP BY L.[{$pk}], L.[{$co}], L.[{$cd}] "
+            ."HAVING SUM(M.[{$cv}]) > 0 "
+            ."ORDER BY L.[{$cd}] ASC";
 
         $stmt = $this->pdo()->prepare($sql);
-        $stmt->execute([$art, $lotto]);
+        $stmt->execute($params);
         $val = $stmt->fetchColumn();
 
-        $res = ($val === false || $val === null) ? null : $this->utf8((string) $val);
-
-        return $this->cache[$chiave] = $res;
+        return ($val === false || $val === null) ? null : $this->utf8((string) $val);
     }
 
     private function pdo(): PDO

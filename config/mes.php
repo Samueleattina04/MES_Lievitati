@@ -169,15 +169,25 @@ return [
             'password' => env('ACCESS_PASSWORD', ''),
         ],
         // Mappatura tabella lotti Omni (T_Linkfattlotti), colonne verificate sul DB reale.
-        // Match esatto su articolo+lotto ESOLVER; restituisce il lotto Omni (Lotto entrata); FIFO su
-        // Data carico; filtro giacenza = lotto non chiuso (Lotto chiuso = 0).
+        // Regola (richiesta committente): l'export DEVE proporre solo lotti Omni con GIACENZA REALE > 0
+        // (giacenza = somma dei movimenti in T_MovimentoLotto), cosi' l'import in Omni non genera mai
+        // negativi. Selezione a due livelli:
+        //   1) match esatto articolo+lotto ESOLVER -> lotto Omni piu' VECCHIO con giacenza > 0 (FIFO);
+        //   2) se quel lotto e' gia' negativo/esaurito su Omni, si risale per SOLO ARTICOLO al lotto
+        //      Omni piu' vecchio con giacenza > 0.
+        // La giacenza si calcola da T_MovimentoLotto (SUM di 'Valore Movimento'), legata a
+        // T_Linkfattlotti via IDLinkfattlotti = IDLinkFattlotti (Access e' case-insensitive).
         'lotti' => [
             'tabella' => env('MES_OMNI_TABELLA', 'T_Linkfattlotti'),
             'col_articolo' => env('MES_OMNI_COL_ARTICOLO', 'CodArtEsolver'),
             'col_lotto' => env('MES_OMNI_COL_LOTTO', 'CodLottoEsolver'),
             'col_lotto_omni' => env('MES_OMNI_COL_LOTTO_OMNI', 'Lotto entrata'),
             'col_data' => env('MES_OMNI_COL_DATA', 'Data carico'),        // FIFO (piu' vecchio)
-            'col_lotto_chiuso' => env('MES_OMNI_COL_LOTTO_CHIUSO', 'Lotto chiuso'), // 0 = con giacenza
+            'col_pk' => env('MES_OMNI_COL_PK', 'IDLinkFattlotti'),        // PK di T_Linkfattlotti
+            // Movimenti del lotto (per la giacenza reale): SUM(col_valore) raggruppata per lotto.
+            'tabella_movimenti' => env('MES_OMNI_TABELLA_MOV', 'T_MovimentoLotto'),
+            'col_valore' => env('MES_OMNI_COL_VALORE', 'Valore Movimento'), // +carico / -scarico
+            'col_link' => env('MES_OMNI_COL_LINK', 'IDLinkfattlotti'),      // FK verso T_Linkfattlotti
         ],
     ],
 
