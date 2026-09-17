@@ -16,6 +16,7 @@ final class TracciabilitaService
     public function __construct(
         private readonly MovimentiLottoSourceInterface $source,
         private readonly int $maxLivelli = 12,
+        private readonly int $maxNodi = 500,
     ) {}
 
     /**
@@ -47,9 +48,15 @@ final class TracciabilitaService
             $prossima = [];
             foreach ($this->source->consumiPerProdotti($batch) as $c) {
                 $consumiPerLotto[$c->lottoProdotto][] = $c;
-                if ($c->lotto !== '' && ! isset($visitati[$c->lotto])) {
+                // Si espandono SOLO i lotti che sono lotti di produzione interni: i lotti d'acquisto/
+                // placeholder (es. "1", "10/12/2025") sono foglie. Espanderli farebbe esplodere la
+                // ricerca (valori jolly su ~3M movimenti senza indice su RifLottoPFAlfanum).
+                if ($c->lotto !== '' && ! isset($visitati[$c->lotto]) && self::pareLottoProduzione($c->lotto)) {
                     $prossima[$c->lotto] = true;
                 }
+            }
+            if (count($visitati) >= $this->maxNodi) {
+                break; // guardia anti-esplosione
             }
             $frontiera = array_keys($prossima);
             $livello++;
@@ -190,5 +197,18 @@ final class TracciabilitaService
         $dt = \DateTime::createFromFormat('d/m/Y H.i.s', $data);
 
         return $dt !== false ? $dt->getTimestamp() : PHP_INT_MAX;
+    }
+
+    /**
+     * Vero se il lotto e' un lotto di PRODUZIONE interno, quindi da espandere risalendo la distinta.
+     * I lotti di produzione aziendali hanno la struttura col trattino (<prodotto>-<giorno><anno><prog>,
+     * es. 6412-27826111). I lotti d'acquisto/placeholder — numeri nudi ("1"), date ("10/12/2025"),
+     * codici fornitore ("L120618300", "3126004810") — NON hanno quella forma: sono foglie e non si
+     * espandono. Fondamentale per le performance: espandere un valore come "1" lo userebbe come jolly
+     * su ~3M movimenti (colonna RifLottoPFAlfanum non indicizzata) facendo esplodere la ricerca.
+     */
+    private static function pareLottoProduzione(string $lotto): bool
+    {
+        return (bool) preg_match('/^[^\s\/]+-[^\s\/]+$/', trim($lotto));
     }
 }

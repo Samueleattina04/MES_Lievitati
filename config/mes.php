@@ -143,6 +143,12 @@ return [
         'tipo_mov_scarico' => (int) env('MES_TRACC_TIPO_SCARICO', 3),
         'max_livelli' => (int) env('MES_TRACC_MAX_LIVELLI', 12),
 
+        // Guardia anti-esplosione: numero massimo di lotti distinti da espandere. Serve contro i lotti
+        // "degeneri" (es. componenti registrati con lotto "1" o "10/12/2025") che, usati come jolly su
+        // ~3M di movimenti senza indice su RifLottoPFAlfanum, farebbero esplodere la ricerca. In pratica
+        // gli alberi lievitati sono piccoli; 500 e' molto oltre il reale.
+        'max_nodi' => (int) env('MES_TRACC_MAX_NODI', 500),
+
         // Tempo massimo (secondi) concesso alla ricostruzione della tracciabilita': un albero
         // grande fa piu' scansioni sui movimenti ESOLVER (tabelle enormi, colonne lotto non
         // indicizzate, gestionale in sola lettura -> non si possono aggiungere indici) e il

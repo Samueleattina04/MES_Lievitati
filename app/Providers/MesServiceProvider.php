@@ -93,6 +93,7 @@ class MesServiceProvider extends ServiceProvider
         $this->app->bind(TracciabilitaService::class, fn (Application $app) => new TracciabilitaService(
             $app->make(MovimentiLottoSourceInterface::class),
             (int) config('mes.tracciabilita.max_livelli', 12),
+            (int) config('mes.tracciabilita.max_nodi', 500),
         ));
 
         // Mappatura lotto ESOLVER -> lotto Omni (§6-bis): DB Omni (Access ODBC) o fixture (dev/test).

@@ -90,6 +90,49 @@ final class TracciabilitaServiceTest extends TestCase
         self::assertFalse($res['trovato']);
     }
 
+    /**
+     * Anti-esplosione (caso reale lotto 6412-27826111): i componenti con lotto "degenere" (numeri nudi
+     * come "1", date come "10/12/2025") NON vanno espansi — farlo userebbe quei valori come jolly su
+     * milioni di movimenti e manderebbe in timeout. Restano foglie; i semilavorati veri si espandono.
+     */
+    public function test_non_espande_i_lotti_degeneri(): void
+    {
+        $movimenti = [
+            ['tipo' => 'carico', 'articolo' => 'PANFINITO', 'lotto' => '6412-27826111', 'quantita' => 10, 'um' => 'PZ', 'magazzino' => '01', 'causale' => 'Carico da produzione'],
+            // Consumi del finito: un semilavorato vero (col trattino) + due componenti con lotto degenere.
+            ['tipo' => 'scarico', 'lotto_prodotto' => '6412-27826111', 'articolo_prodotto' => 'PANFINITO', 'articolo' => 'PANARANCIAROSSA/FOND750', 'lotto' => '1113-25326110', 'quantita' => 96, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'Consumo per produzione'],
+            ['tipo' => 'scarico', 'lotto_prodotto' => '6412-27826111', 'articolo_prodotto' => 'PANFINITO', 'articolo' => 'BASEPANVINCENTE-750', 'lotto' => '1', 'quantita' => 72, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'Consumo per produzione'],
+            ['tipo' => 'scarico', 'lotto_prodotto' => '6412-27826111', 'articolo_prodotto' => 'PANFINITO', 'articolo' => 'BASEPANVINCENTE-750', 'lotto' => '10/12/2025', 'quantita' => 24, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'Consumo per produzione'],
+            // TRAPPOLA: il lotto degenere "1" ha "figli" che NON devono comparire (non va espanso).
+            ['tipo' => 'scarico', 'lotto_prodotto' => '1', 'articolo_prodotto' => 'JOLLY', 'articolo' => 'NON-DEVE-COMPARIRE', 'lotto' => '777-77777777', 'quantita' => 1, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'jolly'],
+            // Il semilavorato vero 1113-25326110 ha una materia prima foglia (deve comparire = espanso).
+            ['tipo' => 'scarico', 'lotto_prodotto' => '1113-25326110', 'articolo_prodotto' => 'PANARANCIAROSSA/FOND750', 'articolo' => 'FARINA', 'lotto' => 'L120618300', 'quantita' => 50, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'Consumo per produzione'],
+        ];
+
+        $res = (new TracciabilitaService(new FixtureMovimentiAdapter($movimenti)))->albero('6412-27826111');
+
+        self::assertTrue($res['trovato']);
+        $articoli = array_map(static fn ($m) => $m['articolo'], $res['movimenti']);
+
+        // Il semilavorato vero e' stato espanso (compare la sua materia prima).
+        self::assertContains('FARINA', $articoli);
+        // I componenti con lotto degenere restano foglie (compaiono come consumo del finito)...
+        self::assertContains('BASEPANVINCENTE-750', $articoli);
+        // ...ma NON sono stati espansi: i loro "figli" non compaiono.
+        self::assertNotContains('NON-DEVE-COMPARIRE', $articoli);
+
+        // Nell'albero: il componente col lotto "1" e' foglia; il semilavorato vero ha figlio.
+        $componenti = $res['nodo']['componenti'];
+        $base = $this->trova($componenti, 'BASEPANVINCENTE-750');
+        self::assertNotNull($base);
+        self::assertFalse($base['semilavorato']);
+        self::assertNull($base['figlio']);
+
+        $semi = $this->trova($componenti, 'PANARANCIAROSSA/FOND750');
+        self::assertNotNull($semi);
+        self::assertNotNull($semi['figlio']);
+    }
+
     public function test_export_omni_solo_foglio_nuovo_una_riga_per_componente(): void
     {
         $res = $this->service()->albero('PAN-1');
