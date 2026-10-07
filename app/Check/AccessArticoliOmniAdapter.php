@@ -12,8 +12,9 @@ use PDO;
  * noti a Omni (campo `CodArtEsolver`) in modo DISTINCT. La connessione e le colonne sono parametrizzate
  * (config/mes.php: mes.check.omni + mes.omni.connessione). Dati Access in Windows-1252 -> convertiti UTF-8.
  *
- * Nota: la tabella di default e' `T_Linkfattlotti` (articoli con carichi/lotti). Se Omni ha un'anagrafica
- * articoli piu' completa con il codice ESOLVER, basta puntarci via MES_CHECK_OMNI_TABELLA / _COL.
+ * Nota: di default (config) legge l'anagrafica completa `T_INGREDIENTI` col codice `CodGestionale`. In
+ * alternativa si puo' usare `CodEsolver` (collegamento esplicito a ESOLVER, ma spesso vuoto) via
+ * MES_CHECK_OMNI_COL, oppure un'altra tabella via MES_CHECK_OMNI_TABELLA.
  */
 final class AccessArticoliOmniAdapter implements ArticoliSourceInterface
 {

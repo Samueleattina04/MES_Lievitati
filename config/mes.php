@@ -206,10 +206,11 @@ return [
     | su Omni (Access). La chiave di confronto e' il CODICE ARTICOLO ESOLVER: su Omni e' il campo
     | 'CodArtEsolver'. Output: due elenchi (solo ESOLVER / solo Omni) -> file Excel a due fogli.
     |
-    | Lato Omni il default legge i codici da T_Linkfattlotti (articoli con carichi/lotti). Se Omni ha
-    | un'anagrafica articoli piu' completa col codice ESOLVER, puntarci con MES_CHECK_OMNI_TABELLA/_COL
-    | (scoprire tabelle/colonne con `php artisan omni:schema --table=...`). La connessione Access e'
-    | quella gia' configurata in mes.omni.connessione.
+    | Lato Omni l'anagrafica articoli completa e' T_INGREDIENTI: 'CodGestionale' = codice articolo interno
+    | Omni (sempre valorizzato), 'CodEsolver' = collegamento esplicito a ESOLVER (spesso VUOTO, quindi non
+    | affidabile come chiave di default), 'Nome comerc Ingrediente' = descrizione. Se Omni ed ESOLVER NON
+    | condividono la codifica articolo, mettere MES_CHECK_OMNI_COL=CodEsolver (confronta solo gli articoli
+    | Omni col codice ESOLVER valorizzato). La connessione Access e' quella in mes.omni.connessione.
     */
     'check' => [
         'timeout' => (int) env('MES_CHECK_TIMEOUT', 120),
@@ -221,9 +222,9 @@ return [
         ],
         'omni' => [
             'adapter' => env('MES_CHECK_OMNI_ADAPTER', env('MES_OMNI_ADAPTER', 'fixture')), // 'access' | 'fixture'
-            'tabella' => env('MES_CHECK_OMNI_TABELLA', 'T_Linkfattlotti'),
-            'col_codice' => env('MES_CHECK_OMNI_COL', 'CodArtEsolver'),
-            'col_descrizione' => env('MES_CHECK_OMNI_COL_DESCR', ''), // opzionale: '' = solo codice
+            'tabella' => env('MES_CHECK_OMNI_TABELLA', 'T_INGREDIENTI'),
+            'col_codice' => env('MES_CHECK_OMNI_COL', 'CodGestionale'), // alternativa: 'CodEsolver'
+            'col_descrizione' => env('MES_CHECK_OMNI_COL_DESCR', 'Nome comerc Ingrediente'), // '' = solo codice
         ],
     ],
 
