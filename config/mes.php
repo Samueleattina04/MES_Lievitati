@@ -199,6 +199,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Check anagrafiche ESOLVER vs Omni (§ Check)
+    |--------------------------------------------------------------------------
+    |
+    | Confronta tutti gli articoli presenti su ESOLVER (SQL Server, ArtAnagrafica) con quelli presenti
+    | su Omni (Access). La chiave di confronto e' il CODICE ARTICOLO ESOLVER: su Omni e' il campo
+    | 'CodArtEsolver'. Output: due elenchi (solo ESOLVER / solo Omni) -> file Excel a due fogli.
+    |
+    | Lato Omni il default legge i codici da T_Linkfattlotti (articoli con carichi/lotti). Se Omni ha
+    | un'anagrafica articoli piu' completa col codice ESOLVER, puntarci con MES_CHECK_OMNI_TABELLA/_COL
+    | (scoprire tabelle/colonne con `php artisan omni:schema --table=...`). La connessione Access e'
+    | quella gia' configurata in mes.omni.connessione.
+    */
+    'check' => [
+        'timeout' => (int) env('MES_CHECK_TIMEOUT', 120),
+        'esolver' => [
+            'adapter' => env('MES_CHECK_ESOLVER_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')), // 'sqlsrv' | 'fixture'
+            'tabella' => env('MES_CHECK_ESOLVER_TABELLA', 'ArtAnagrafica'),
+            'col_codice' => env('MES_CHECK_ESOLVER_COL', 'CodArt'),
+            'col_descrizione' => env('MES_CHECK_ESOLVER_COL_DESCR', 'Descrizione'), // '' per nessuna
+        ],
+        'omni' => [
+            'adapter' => env('MES_CHECK_OMNI_ADAPTER', env('MES_OMNI_ADAPTER', 'fixture')), // 'access' | 'fixture'
+            'tabella' => env('MES_CHECK_OMNI_TABELLA', 'T_Linkfattlotti'),
+            'col_codice' => env('MES_CHECK_OMNI_COL', 'CodArtEsolver'),
+            'col_descrizione' => env('MES_CHECK_OMNI_COL_DESCR', ''), // opzionale: '' = solo codice
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
     |

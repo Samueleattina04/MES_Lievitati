@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\HomeController as AdminHomeController;
 use App\Http\Controllers\Admin\RepartoController;
 use App\Http\Controllers\Admin\TipoFaseController;
 use App\Http\Controllers\Admin\UtenteController;
+use App\Http\Controllers\CheckController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EsportazioneController;
 use App\Http\Controllers\GenealogiaController;
@@ -98,6 +99,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/tracciabilita/omni', [TracciabilitaController::class, 'omni'])
         ->middleware('can:vedere-genealogia')
         ->name('tracciabilita.omni');
+
+    // Check anagrafiche (§ Check): confronto articoli ESOLVER vs Omni + export Excel a due fogli.
+    Route::get('/check', [CheckController::class, 'index'])
+        ->middleware('can:esportare')
+        ->name('check.index');
+    Route::get('/check/scarica', [CheckController::class, 'scarica'])
+        ->middleware('can:esportare')
+        ->name('check.scarica');
 
     // Export tracciati (§10): SOLO chi ha il permesso 'esportare' (backoffice + admin, NON pianificazione).
     // Un tracciato per gestionale di destinazione ('esolver' | 'omni').

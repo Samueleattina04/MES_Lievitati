@@ -71,6 +71,13 @@ const can = computed(() => usePage().props.auth?.can ?? {});
                                     Tracciabilità
                                 </NavLink>
                                 <NavLink
+                                    v-if="can.esportare"
+                                    :href="route('check.index')"
+                                    :active="route().current('check.*')"
+                                >
+                                    Check
+                                </NavLink>
+                                <NavLink
                                     v-if="can.configurare"
                                     :href="route('admin.index')"
                                     :active="route().current('admin.*')"
@@ -212,6 +219,13 @@ const can = computed(() => usePage().props.auth?.can ?? {});
                             :active="route().current('tracciabilita.*')"
                         >
                             Tracciabilità
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            v-if="can.esportare"
+                            :href="route('check.index')"
+                            :active="route().current('check.*')"
+                        >
+                            Check
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
                             v-if="can.configurare"

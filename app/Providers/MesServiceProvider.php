@@ -7,6 +7,11 @@ namespace App\Providers;
 use App\Bom\Contracts\BomSourceAdapterInterface;
 use App\Bom\FixtureBomAdapter;
 use App\Bom\SqlServerBomAdapter;
+use App\Check\AccessArticoliOmniAdapter;
+use App\Check\CheckService;
+use App\Check\Contracts\ArticoliSourceInterface;
+use App\Check\FixtureArticoliAdapter;
+use App\Check\SqlServerArticoliEsolverAdapter;
 use App\Export\EsportazioneService;
 use App\Export\Templates\EsolverVersamentiCsvTemplate;
 use App\Omni\AccessLottoOmniAdapter;
@@ -110,6 +115,16 @@ class MesServiceProvider extends ServiceProvider
             };
         });
 
+        // Check anagrafiche ESOLVER vs Omni (§ Check): due sorgenti articoli dietro la stessa interfaccia.
+        $this->app->bind(CheckService::class, function (): CheckService {
+            $cfg = (array) config('mes.check');
+
+            return new CheckService(
+                $this->sorgenteArticoliEsolver((array) ($cfg['esolver'] ?? [])),
+                $this->sorgenteArticoliOmni((array) ($cfg['omni'] ?? [])),
+            );
+        });
+
         // Sorgente per riconoscere i lotti di semilavorato gia' esistenti (§5.3, change #3).
         $this->app->singleton(LottoSemilavoratoSourceInterface::class, function (): LottoSemilavoratoSourceInterface {
             $sorgente = (string) config('mes.semilavorato.sorgente_lotti', 'lotti_prodotto');
@@ -163,5 +178,33 @@ class MesServiceProvider extends ServiceProvider
         Gate::define('vedere-genealogia', fn (User $u) => (bool) $u->ruolo?->vedeGenealogia());
         // Avanzamento produzione (operatore + backoffice): area /operatore, /api/sync, chiusura massiva.
         Gate::define('avanzare-produzione', fn (User $u) => (bool) $u->ruolo?->puoAvanzareProduzione());
+    }
+
+    /** @param array<string,mixed> $cfg */
+    private function sorgenteArticoliEsolver(array $cfg): ArticoliSourceInterface
+    {
+        $driver = (string) ($cfg['adapter'] ?? 'sqlsrv');
+
+        return match ($driver) {
+            'sqlsrv' => new SqlServerArticoliEsolverAdapter(DB::connection('sqlsrv_gestionale'), $cfg),
+            'fixture' => new FixtureArticoliAdapter(),
+            default => throw new InvalidArgumentException(
+                "Adapter Check ESOLVER non valido: '{$driver}'. Valori ammessi: 'sqlsrv', 'fixture'."
+            ),
+        };
+    }
+
+    /** @param array<string,mixed> $cfg */
+    private function sorgenteArticoliOmni(array $cfg): ArticoliSourceInterface
+    {
+        $driver = (string) ($cfg['adapter'] ?? 'fixture');
+
+        return match ($driver) {
+            'access' => new AccessArticoliOmniAdapter((array) config('mes.omni.connessione'), $cfg),
+            'fixture' => new FixtureArticoliAdapter(),
+            default => throw new InvalidArgumentException(
+                "Adapter Check Omni non valido: '{$driver}'. Valori ammessi: 'access', 'fixture'."
+            ),
+        };
     }
 }
