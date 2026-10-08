@@ -218,7 +218,7 @@ return [
             'adapter' => env('MES_CHECK_ESOLVER_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')), // 'sqlsrv' | 'fixture'
             'tabella' => env('MES_CHECK_ESOLVER_TABELLA', 'ArtAnagrafica'),
             'col_codice' => env('MES_CHECK_ESOLVER_COL', 'CodArt'),
-            'col_descrizione' => env('MES_CHECK_ESOLVER_COL_DESCR', 'Descrizione'), // '' per nessuna (ArtAnagrafica reale: da verificare)
+            'col_descrizione' => env('MES_CHECK_ESOLVER_COL_DESCR', 'DesArt'), // ArtAnagrafica.DesArt; '' per nessuna
         ],
         'omni' => [
             'adapter' => env('MES_CHECK_OMNI_ADAPTER', env('MES_OMNI_ADAPTER', 'fixture')), // 'access' | 'fixture'
