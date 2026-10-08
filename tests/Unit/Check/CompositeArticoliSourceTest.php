@@ -25,7 +25,7 @@ final class CompositeArticoliSourceTest extends TestCase
         self::assertCount(4, $tutti);
         self::assertArrayHasKey('ANACARDOBIO', $tutti);
         self::assertArrayHasKey('PAN0104', $tutti);
-        self::assertSame('Panettone', $tutti['PAN0104']);
+        self::assertSame('Panettone', $tutti['PAN0104']['descrizione']);
     }
 
     public function test_prima_occorrenza_vince_ma_completa_la_descrizione_mancante(): void
@@ -35,8 +35,8 @@ final class CompositeArticoliSourceTest extends TestCase
 
         $tutti = (new CompositeArticoliSource($a, $b))->articoli();
 
-        self::assertSame('Descr A', $tutti['X1']);     // prima occorrenza vince
-        self::assertSame('Descr da B', $tutti['X2']);  // descrizione vuota completata dalla seconda
+        self::assertSame('Descr A', $tutti['X1']['descrizione']);     // prima occorrenza vince
+        self::assertSame('Descr da B', $tutti['X2']['descrizione']);  // descrizione vuota completata dalla seconda
     }
 
     public function test_senza_sorgenti_elenco_vuoto(): void

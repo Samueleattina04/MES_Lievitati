@@ -222,10 +222,11 @@ return [
         ],
         'omni' => [
             'adapter' => env('MES_CHECK_OMNI_ADAPTER', env('MES_OMNI_ADAPTER', 'fixture')), // 'access' | 'fixture'
-            // Unione di piu' tabelle: ogni voce {tabella, col_codice, col_descrizione (''=solo codice)}.
+            // Unione di piu' tabelle: ogni voce {tabella, col_codice, col_descrizione (''=solo codice),
+            // col_id (id d'origine mostrato nel foglio "Omni non in Esolver")}.
             'tabelle' => [
-                ['tabella' => 'T_INGREDIENTI', 'col_codice' => 'CodGestionale', 'col_descrizione' => 'Nome comerc Ingrediente'],
-                ['tabella' => 'T_PRODOTTI', 'col_codice' => 'CodiceAziendale', 'col_descrizione' => ''],
+                ['tabella' => 'T_INGREDIENTI', 'col_codice' => 'CodGestionale', 'col_descrizione' => 'Nome comerc Ingrediente', 'col_id' => 'IDIngrediente'],
+                ['tabella' => 'T_PRODOTTI', 'col_codice' => 'CodiceAziendale', 'col_descrizione' => '', 'col_id' => 'IdProdottiAziendali'],
             ],
         ],
     ],

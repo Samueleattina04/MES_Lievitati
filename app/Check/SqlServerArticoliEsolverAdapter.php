@@ -48,7 +48,12 @@ final class SqlServerArticoliEsolverAdapter implements ArticoliSourceInterface
             if ($codice === '') {
                 continue;
             }
-            $out[$codice] = trim((string) ($r['Descrizione'] ?? ''));
+            // tabella/id non servono lato ESOLVER (usati solo nel foglio Omni): id = lo stesso codice.
+            $out[$codice] = [
+                'descrizione' => trim((string) ($r['Descrizione'] ?? '')),
+                'tabella' => $this->tabella,
+                'id' => $codice,
+            ];
         }
 
         return $out;

@@ -91,15 +91,19 @@ const troncatoOmni = computed(() => (props.risultato?.solo_omni_totale || 0) > s
                                     <tr>
                                         <th class="px-3 py-2">Codice</th>
                                         <th class="px-3 py-2">Descrizione</th>
+                                        <th class="px-3 py-2">Tabella</th>
+                                        <th class="px-3 py-2">ID</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
                                     <tr v-for="(a, i) in soloOmni" :key="i" class="hover:bg-gray-50">
                                         <td class="px-3 py-1.5 font-mono text-gray-800">{{ a.codice }}</td>
                                         <td class="px-3 py-1.5 text-gray-600">{{ a.descrizione }}</td>
+                                        <td class="px-3 py-1.5 text-gray-500">{{ a.tabella }}</td>
+                                        <td class="px-3 py-1.5 font-mono text-gray-500">{{ a.id }}</td>
                                     </tr>
                                     <tr v-if="soloOmni.length === 0">
-                                        <td colspan="2" class="px-3 py-3 text-center text-gray-400">Nessun articolo</td>
+                                        <td colspan="4" class="px-3 py-3 text-center text-gray-400">Nessun articolo</td>
                                     </tr>
                                 </tbody>
                             </table>

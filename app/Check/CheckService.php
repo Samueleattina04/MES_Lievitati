@@ -20,7 +20,7 @@ final class CheckService
     ) {}
 
     /**
-     * @return array{soloEsolver:list<array{codice:string,descrizione:string}>, soloOmni:list<array{codice:string,descrizione:string}>}
+     * @return array{soloEsolver:list<array{codice:string,descrizione:string}>, soloOmni:list<array{codice:string,descrizione:string,tabella:string,id:string}>}
      */
     public function confronta(): array
     {
@@ -31,25 +31,32 @@ final class CheckService
         $chiaviOmni = $this->chiavi($omni);
 
         return [
-            'soloEsolver' => $this->differenza($esolver, $chiaviOmni),
-            'soloOmni' => $this->differenza($omni, $chiaviEsolver),
+            'soloEsolver' => $this->differenza($esolver, $chiaviOmni, false),
+            'soloOmni' => $this->differenza($omni, $chiaviEsolver, true),
         ];
     }
 
     /**
      * Articoli di $elenco la cui chiave normalizzata non e' presente in $chiaviAltro, ordinati per codice.
+     * Con $conProvenienza aggiunge tabella e id (serve nel foglio "Omni non in Esolver").
      *
-     * @param  array<string,string>  $elenco       codice => descrizione
+     * @param  array<string,array{descrizione:string,tabella:string,id:string}>  $elenco
      * @param  array<string,true>  $chiaviAltro  insieme delle chiavi normalizzate dell'altro gestionale
-     * @return list<array{codice:string,descrizione:string}>
+     * @return list<array<string,string>>
      */
-    private function differenza(array $elenco, array $chiaviAltro): array
+    private function differenza(array $elenco, array $chiaviAltro, bool $conProvenienza): array
     {
         $out = [];
-        foreach ($elenco as $codice => $descrizione) {
-            if (! isset($chiaviAltro[$this->norm((string) $codice)])) {
-                $out[] = ['codice' => (string) $codice, 'descrizione' => (string) $descrizione];
+        foreach ($elenco as $codice => $rec) {
+            if (isset($chiaviAltro[$this->norm((string) $codice)])) {
+                continue;
             }
+            $riga = ['codice' => (string) $codice, 'descrizione' => (string) ($rec['descrizione'] ?? '')];
+            if ($conProvenienza) {
+                $riga['tabella'] = (string) ($rec['tabella'] ?? '');
+                $riga['id'] = (string) ($rec['id'] ?? '');
+            }
+            $out[] = $riga;
         }
 
         usort($out, static fn (array $a, array $b) => strcmp($a['codice'], $b['codice']));
@@ -58,7 +65,7 @@ final class CheckService
     }
 
     /**
-     * @param  array<string,string>  $elenco
+     * @param  array<string,mixed>  $elenco
      * @return array<string,true>
      */
     private function chiavi(array $elenco): array

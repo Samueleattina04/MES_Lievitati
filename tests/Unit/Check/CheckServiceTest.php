@@ -60,6 +60,24 @@ final class CheckServiceTest extends TestCase
         self::assertSame('Torrone 250g', $res['soloOmni'][0]['descrizione']);
     }
 
+    public function test_solo_omni_riporta_tabella_e_id(): void
+    {
+        $esolver = new FixtureArticoliAdapter(['PAN0104' => 'Panettone']);
+        $omni = new FixtureArticoliAdapter([
+            'ANACARDOBIO' => ['descrizione' => 'Anacardo bio', 'tabella' => 'T_INGREDIENTI', 'id' => '42'],
+        ]);
+
+        $res = (new CheckService($esolver, $omni))->confronta();
+
+        self::assertCount(1, $res['soloOmni']);
+        self::assertSame('ANACARDOBIO', $res['soloOmni'][0]['codice']);
+        self::assertSame('T_INGREDIENTI', $res['soloOmni'][0]['tabella']);
+        self::assertSame('42', $res['soloOmni'][0]['id']);
+        // Il foglio ESOLVER non porta provenienza (solo codice + descrizione).
+        self::assertSame('PAN0104', $res['soloEsolver'][0]['codice']);
+        self::assertArrayNotHasKey('tabella', $res['soloEsolver'][0]);
+    }
+
     public function test_anagrafiche_identiche_nessuna_differenza(): void
     {
         $a = ['PAN0104' => 'x', 'COL0205' => 'y'];

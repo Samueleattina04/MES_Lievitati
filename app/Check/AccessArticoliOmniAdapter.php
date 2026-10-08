@@ -8,13 +8,13 @@ use App\Check\Contracts\ArticoliSourceInterface;
 use PDO;
 
 /**
- * Anagrafica articoli da Omni (Microsoft Access via ODBC, SOLA LETTURA), § Check. Legge i codici ESOLVER
- * noti a Omni (campo `CodArtEsolver`) in modo DISTINCT. La connessione e le colonne sono parametrizzate
- * (config/mes.php: mes.check.omni + mes.omni.connessione). Dati Access in Windows-1252 -> convertiti UTF-8.
+ * Anagrafica articoli da Omni (Microsoft Access via ODBC, SOLA LETTURA), § Check. Per ogni codice legge
+ * descrizione e id d'origine; riporta anche il nome della tabella (serve nel foglio "Omni non in Esolver"
+ * per indicare provenienza + id). La connessione e le colonne sono parametrizzate (config/mes.php:
+ * mes.check.omni.tabelle[]). Dati Access in Windows-1252 -> convertiti UTF-8.
  *
- * Legge UNA tabella (spec in config: mes.check.omni.tabelle[]). L'anagrafica Omni completa e' l'unione
- * di piu' tabelle (T_INGREDIENTI.CodGestionale + T_PRODOTTI.CodiceAziendale): l'unione la fa
- * {@see CompositeArticoliSource}, istanziando questo adapter una volta per tabella.
+ * Legge UNA tabella; l'anagrafica Omni completa e' l'unione di piu' tabelle (T_INGREDIENTI + T_PRODOTTI),
+ * fatta da {@see CompositeArticoliSource} istanziando questo adapter una volta per tabella.
  */
 final class AccessArticoliOmniAdapter implements ArticoliSourceInterface
 {
@@ -24,29 +24,37 @@ final class AccessArticoliOmniAdapter implements ArticoliSourceInterface
 
     private string $colDescrizione;
 
+    private string $colId;
+
     /**
      * @param  array<string,mixed>  $connessione  ['dsn','username','password']
-     * @param  array<string,mixed>  $config       ['tabella','col_codice','col_descrizione']
+     * @param  array<string,mixed>  $config       ['tabella','col_codice','col_descrizione','col_id']
      */
     public function __construct(
         private readonly array $connessione,
         array $config = [],
     ) {
-        $this->tabella = (string) ($config['tabella'] ?? 'T_Linkfattlotti');
-        $this->colCodice = (string) ($config['col_codice'] ?? 'CodArtEsolver');
+        $this->tabella = (string) ($config['tabella'] ?? 'T_INGREDIENTI');
+        $this->colCodice = (string) ($config['col_codice'] ?? 'CodGestionale');
         $this->colDescrizione = (string) ($config['col_descrizione'] ?? '');
+        $this->colId = (string) ($config['col_id'] ?? '');
     }
 
     public function articoli(): array
     {
         $cc = $this->colCodice;
         $cd = trim($this->colDescrizione);
+        $ci = trim($this->colId);
 
-        // DISTINCT sul codice; la descrizione (se c'e') si prende con MAX per avere una riga per codice.
-        $sql = $cd !== ''
-            ? "SELECT [{$cc}] AS Codice, MAX([{$cd}]) AS Descrizione FROM [{$this->tabella}] "
-                ."WHERE [{$cc}] IS NOT NULL GROUP BY [{$cc}]"
-            : "SELECT DISTINCT [{$cc}] AS Codice FROM [{$this->tabella}] WHERE [{$cc}] IS NOT NULL";
+        // Una riga per codice (GROUP BY): id e descrizione presi in aggregato (MIN/MAX) per determinismo.
+        $select = "[{$cc}] AS Codice";
+        if ($ci !== '') {
+            $select .= ", MIN([{$ci}]) AS Id";
+        }
+        if ($cd !== '') {
+            $select .= ", MAX([{$cd}]) AS Descrizione";
+        }
+        $sql = "SELECT {$select} FROM [{$this->tabella}] WHERE [{$cc}] IS NOT NULL GROUP BY [{$cc}]";
 
         $pdo = new PDO(
             'odbc:'.trim((string) ($this->connessione['dsn'] ?? '')),
@@ -61,7 +69,11 @@ final class AccessArticoliOmniAdapter implements ArticoliSourceInterface
             if ($codice === '') {
                 continue;
             }
-            $out[$codice] = $cd !== '' ? trim($this->utf8((string) ($r['Descrizione'] ?? ''))) : '';
+            $out[$codice] = [
+                'descrizione' => $cd !== '' ? trim($this->utf8((string) ($r['Descrizione'] ?? ''))) : '',
+                'tabella' => $this->tabella,
+                'id' => $ci !== '' ? trim($this->utf8((string) ($r['Id'] ?? ''))) : '',
+            ];
         }
 
         return $out;

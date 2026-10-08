@@ -25,9 +25,12 @@ final class CompositeArticoliSource implements ArticoliSourceInterface
     {
         $out = [];
         foreach ($this->sorgenti as $sorgente) {
-            foreach ($sorgente->articoli() as $codice => $descrizione) {
-                if (! array_key_exists($codice, $out) || ($out[$codice] === '' && $descrizione !== '')) {
-                    $out[$codice] = $descrizione;
+            foreach ($sorgente->articoli() as $codice => $rec) {
+                if (! array_key_exists($codice, $out)) {
+                    $out[$codice] = $rec;
+                } elseif (($out[$codice]['descrizione'] ?? '') === '' && ($rec['descrizione'] ?? '') !== '') {
+                    // la prima occorrenza vince (tabella/id), ma completa la descrizione se era vuota.
+                    $out[$codice]['descrizione'] = $rec['descrizione'];
                 }
             }
         }

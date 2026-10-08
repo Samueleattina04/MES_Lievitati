@@ -12,26 +12,47 @@ namespace App\Check;
 final class CheckExport
 {
     /**
-     * @param  array{soloEsolver:list<array{codice:string,descrizione:string}>, soloOmni:list<array{codice:string,descrizione:string}>}  $risultato
+     * @param  array{soloEsolver:list<array<string,string>>, soloOmni:list<array<string,string>>}  $risultato
      * @return list<array{name:string, rows:list<list<string|int|float|null>>}>
      */
     public static function fogli(array $risultato): array
     {
         return [
-            ['name' => 'Esolver non in Omni', 'rows' => self::righe($risultato['soloEsolver'] ?? [])],
-            ['name' => 'Omni non in Esolver', 'rows' => self::righe($risultato['soloOmni'] ?? [])],
+            ['name' => 'Esolver non in Omni', 'rows' => self::righeEsolver($risultato['soloEsolver'] ?? [])],
+            ['name' => 'Omni non in Esolver', 'rows' => self::righeOmni($risultato['soloOmni'] ?? [])],
         ];
     }
 
     /**
-     * @param  list<array{codice:string,descrizione:string}>  $articoli
+     * @param  list<array<string,string>>  $articoli
      * @return list<list<string|int|float|null>>
      */
-    private static function righe(array $articoli): array
+    private static function righeEsolver(array $articoli): array
     {
         $righe = [['Codice articolo', 'Descrizione']];
         foreach ($articoli as $a) {
             $righe[] = [(string) ($a['codice'] ?? ''), (string) ($a['descrizione'] ?? '')];
+        }
+
+        return $righe;
+    }
+
+    /**
+     * Foglio Omni: in piu' la tabella di provenienza e l'id d'origine dell'articolo.
+     *
+     * @param  list<array<string,string>>  $articoli
+     * @return list<list<string|int|float|null>>
+     */
+    private static function righeOmni(array $articoli): array
+    {
+        $righe = [['Codice articolo', 'Descrizione', 'Tabella', 'ID']];
+        foreach ($articoli as $a) {
+            $righe[] = [
+                (string) ($a['codice'] ?? ''),
+                (string) ($a['descrizione'] ?? ''),
+                (string) ($a['tabella'] ?? ''),
+                (string) ($a['id'] ?? ''),
+            ];
         }
 
         return $righe;
