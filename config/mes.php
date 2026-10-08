@@ -226,7 +226,7 @@ return [
             // col_id (id d'origine mostrato nel foglio "Omni non in Esolver")}.
             'tabelle' => [
                 ['tabella' => 'T_INGREDIENTI', 'col_codice' => 'CodGestionale', 'col_descrizione' => 'Nome comerc Ingrediente', 'col_id' => 'IDIngrediente'],
-                ['tabella' => 'T_PRODOTTI', 'col_codice' => 'CodiceAziendale', 'col_descrizione' => '', 'col_id' => 'IdProdottiAziendali'],
+                ['tabella' => 'T_PRODOTTI', 'col_codice' => 'CodiceAziendale', 'col_descrizione' => 'Descrizione PA', 'col_id' => 'IDProdottoAziendale'],
             ],
         ],
     ],
