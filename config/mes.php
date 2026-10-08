@@ -206,11 +206,11 @@ return [
     | su Omni (Access). La chiave di confronto e' il CODICE ARTICOLO ESOLVER: su Omni e' il campo
     | 'CodArtEsolver'. Output: due elenchi (solo ESOLVER / solo Omni) -> file Excel a due fogli.
     |
-    | Lato Omni l'anagrafica articoli completa e' T_INGREDIENTI: 'CodGestionale' = codice articolo interno
-    | Omni (sempre valorizzato), 'CodEsolver' = collegamento esplicito a ESOLVER (spesso VUOTO, quindi non
-    | affidabile come chiave di default), 'Nome comerc Ingrediente' = descrizione. Se Omni ed ESOLVER NON
-    | condividono la codifica articolo, mettere MES_CHECK_OMNI_COL=CodEsolver (confronta solo gli articoli
-    | Omni col codice ESOLVER valorizzato). La connessione Access e' quella in mes.omni.connessione.
+    | Lato Omni l'anagrafica articoli e' l'UNIONE di piu' tabelle Access (ingredienti + prodotti finiti):
+    |   - T_INGREDIENTI, codice 'CodGestionale', descrizione 'Nome comerc Ingrediente';
+    |   - T_PRODOTTI,    codice 'CodiceAziendale'.
+    | Per aggiungere/cambiare una tabella o colonna basta modificare 'omni.tabelle' qui sotto. La
+    | connessione Access e' quella gia' configurata in mes.omni.connessione.
     */
     'check' => [
         'timeout' => (int) env('MES_CHECK_TIMEOUT', 120),
@@ -218,13 +218,15 @@ return [
             'adapter' => env('MES_CHECK_ESOLVER_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')), // 'sqlsrv' | 'fixture'
             'tabella' => env('MES_CHECK_ESOLVER_TABELLA', 'ArtAnagrafica'),
             'col_codice' => env('MES_CHECK_ESOLVER_COL', 'CodArt'),
-            'col_descrizione' => env('MES_CHECK_ESOLVER_COL_DESCR', 'Descrizione'), // '' per nessuna
+            'col_descrizione' => env('MES_CHECK_ESOLVER_COL_DESCR', 'Descrizione'), // '' per nessuna (ArtAnagrafica reale: da verificare)
         ],
         'omni' => [
             'adapter' => env('MES_CHECK_OMNI_ADAPTER', env('MES_OMNI_ADAPTER', 'fixture')), // 'access' | 'fixture'
-            'tabella' => env('MES_CHECK_OMNI_TABELLA', 'T_INGREDIENTI'),
-            'col_codice' => env('MES_CHECK_OMNI_COL', 'CodGestionale'), // alternativa: 'CodEsolver'
-            'col_descrizione' => env('MES_CHECK_OMNI_COL_DESCR', 'Nome comerc Ingrediente'), // '' = solo codice
+            // Unione di piu' tabelle: ogni voce {tabella, col_codice, col_descrizione (''=solo codice)}.
+            'tabelle' => [
+                ['tabella' => 'T_INGREDIENTI', 'col_codice' => 'CodGestionale', 'col_descrizione' => 'Nome comerc Ingrediente'],
+                ['tabella' => 'T_PRODOTTI', 'col_codice' => 'CodiceAziendale', 'col_descrizione' => ''],
+            ],
         ],
     ],
 

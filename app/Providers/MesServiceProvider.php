@@ -9,6 +9,7 @@ use App\Bom\FixtureBomAdapter;
 use App\Bom\SqlServerBomAdapter;
 use App\Check\AccessArticoliOmniAdapter;
 use App\Check\CheckService;
+use App\Check\CompositeArticoliSource;
 use App\Check\Contracts\ArticoliSourceInterface;
 use App\Check\FixtureArticoliAdapter;
 use App\Check\SqlServerArticoliEsolverAdapter;
@@ -199,12 +200,23 @@ class MesServiceProvider extends ServiceProvider
     {
         $driver = (string) ($cfg['adapter'] ?? 'fixture');
 
-        return match ($driver) {
-            'access' => new AccessArticoliOmniAdapter((array) config('mes.omni.connessione'), $cfg),
-            'fixture' => new FixtureArticoliAdapter(),
-            default => throw new InvalidArgumentException(
+        if ($driver === 'fixture') {
+            return new FixtureArticoliAdapter();
+        }
+
+        if ($driver !== 'access') {
+            throw new InvalidArgumentException(
                 "Adapter Check Omni non valido: '{$driver}'. Valori ammessi: 'access', 'fixture'."
-            ),
-        };
+            );
+        }
+
+        // Anagrafica Omni = unione di piu' tabelle Access (ingredienti + prodotti finiti).
+        $connessione = (array) config('mes.omni.connessione');
+        $sorgenti = array_map(
+            fn (array $t) => new AccessArticoliOmniAdapter($connessione, $t),
+            (array) ($cfg['tabelle'] ?? []),
+        );
+
+        return new CompositeArticoliSource(...$sorgenti);
     }
 }
