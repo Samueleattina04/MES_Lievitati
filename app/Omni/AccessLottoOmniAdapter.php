@@ -9,21 +9,20 @@ use PDO;
 
 /**
  * Adapter di PRODUZIONE verso il gestionale Omni (Microsoft Access via ODBC, sola lettura), §6-bis.
- * Mappa il lotto ESOLVER (articolo + lotto) al lotto interno Omni leggendo `T_Linkfattlotti`, e
- * garantisce che il lotto proposto abbia GIACENZA REALE > 0 (cosi' l'import in Omni non crea negativi).
+ * Per un articolo+lotto ESOLVER restituisce i lotti interni Omni (`Lotto entrata`) CON GIACENZA reale > 0,
+ * ordinati FIFO (piu' vecchi prima) e con la loro giacenza, cosi' il traduttore puo' ripartire la quantita'
+ * su piu' lotti senza creare negativi in import. In coda aggiunge i lotti dello stesso articolo (fallback)
+ * non gia' inclusi nel match esatto articolo+lotto.
  *
  * La giacenza si calcola sommando i movimenti del lotto in `T_MovimentoLotto` (`Valore Movimento`,
- * +carico/-scarico) legati via `IDLinkfattlotti`. Selezione a due livelli:
- *   1) match esatto articolo+lotto ESOLVER -> lotto Omni piu' VECCHIO (FIFO su `Data carico`) con giacenza > 0;
- *   2) se quel lotto e' gia' negativo/esaurito su Omni, si risale per SOLO ARTICOLO al lotto Omni piu'
- *      vecchio con giacenza > 0.
- * Cache in-memory per non ripetere query uguali nello stesso export.
+ * +carico/-scarico) legati via `IDLinkfattlotti`, raggruppati per `Lotto entrata`. Cache in-memory per
+ * non ripetere query uguali nello stesso export.
  */
 final class AccessLottoOmniAdapter implements LottoOmniSourceInterface
 {
     private ?PDO $pdo = null;
 
-    /** @var array<string,?string> */
+    /** @var array<string,list<array{lotto:string,giacenza:float,data:string}>> */
     private array $cache = [];
 
     /**
@@ -36,12 +35,12 @@ final class AccessLottoOmniAdapter implements LottoOmniSourceInterface
         private readonly array $mappa,
     ) {}
 
-    public function lottoOmni(string $articoloEsolver, string $lottoEsolver): ?string
+    public function lottiConGiacenza(string $articoloEsolver, string $lottoEsolver): array
     {
         $art = trim($articoloEsolver);
         $lotto = trim($lottoEsolver);
-        if ($art === '' || $lotto === '') {
-            return null;
+        if ($art === '') {
+            return [];
         }
 
         $chiave = $art.'|'.$lotto;
@@ -49,24 +48,31 @@ final class AccessLottoOmniAdapter implements LottoOmniSourceInterface
             return $this->cache[$chiave];
         }
 
-        // 1) Lotto Omni piu' vecchio CON GIACENZA per l'esatto articolo+lotto ESOLVER.
-        $res = $this->piuVecchioConGiacenza($art, $lotto);
+        // 1) lotti del match esatto articolo+lotto (FIFO).
+        $cand = $lotto !== '' ? $this->candidati($art, $lotto) : [];
 
-        // 2) Fallback: quel lotto non ha alcun lotto Omni con giacenza (negativo/esaurito) ->
-        //    si risale per SOLO ARTICOLO al lotto Omni piu' vecchio con giacenza.
-        if ($res === null) {
-            $res = $this->piuVecchioConGiacenza($art, null);
+        // 2) in coda i lotti dello stesso articolo non gia' presenti (fallback / copertura quantita').
+        $visti = [];
+        foreach ($cand as $c) {
+            $visti[$c['lotto']] = true;
+        }
+        foreach ($this->candidati($art, null) as $c) {
+            if (! isset($visti[$c['lotto']])) {
+                $cand[] = $c;
+                $visti[$c['lotto']] = true;
+            }
         }
 
-        return $this->cache[$chiave] = $res;
+        return $this->cache[$chiave] = $cand;
     }
 
     /**
-     * Lotto Omni (`Lotto entrata`) piu' vecchio (FIFO su `Data carico`) con giacenza reale > 0.
-     * Se $lotto e' null il filtro e' sul solo articolo (fallback). Restituisce null se nessun lotto
-     * ha giacenza > 0.
+     * Lotti Omni (`Lotto entrata`) con giacenza reale > 0, dal piu' vecchio (FIFO su `Data carico`).
+     * Se $lotto e' null filtra sul solo articolo.
+     *
+     * @return list<array{lotto:string,giacenza:float,data:string}>
      */
-    private function piuVecchioConGiacenza(string $art, ?string $lotto): ?string
+    private function candidati(string $art, ?string $lotto): array
     {
         $t = (string) $this->mappa['tabella'];
         $ca = (string) $this->mappa['col_articolo'];
@@ -85,21 +91,32 @@ final class AccessLottoOmniAdapter implements LottoOmniSourceInterface
             $params[] = $lotto;
         }
 
-        // INNER JOIN + HAVING SUM(...) > 0: tiene solo i lotti con giacenza reale positiva.
-        // GROUP BY sulla PK del lotto = una riga per lotto fisico; ORDER BY Data carico ASC = FIFO.
-        // TOP 1 (con eventuali pari-merito) + fetchColumn = il piu' vecchio con giacenza.
-        $sql = "SELECT TOP 1 L.[{$co}] AS lottoOmni "
+        // INNER JOIN + HAVING SUM(...) > 0: solo lotti con giacenza reale positiva. Una riga per
+        // Lotto entrata (= unita' di stock Omni); giacenza = somma movimenti; FIFO su MIN(Data carico).
+        $sql = "SELECT L.[{$co}] AS lottoOmni, SUM(M.[{$cv}]) AS giac, MIN(L.[{$cd}]) AS dataCarico "
             ."FROM [{$t}] AS L INNER JOIN [{$tm}] AS M ON M.[{$ck}] = L.[{$pk}] "
             ."WHERE {$where} "
-            ."GROUP BY L.[{$pk}], L.[{$co}], L.[{$cd}] "
+            ."GROUP BY L.[{$co}] "
             ."HAVING SUM(M.[{$cv}]) > 0 "
-            ."ORDER BY L.[{$cd}] ASC";
+            ."ORDER BY MIN(L.[{$cd}]) ASC";
 
         $stmt = $this->pdo()->prepare($sql);
         $stmt->execute($params);
-        $val = $stmt->fetchColumn();
 
-        return ($val === false || $val === null) ? null : $this->utf8((string) $val);
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $lottoOmni = trim($this->utf8((string) ($r['lottoOmni'] ?? '')));
+            if ($lottoOmni === '') {
+                continue;
+            }
+            $out[] = [
+                'lotto' => $lottoOmni,
+                'giacenza' => (float) ($r['giac'] ?? 0),
+                'data' => (string) ($r['dataCarico'] ?? ''),
+            ];
+        }
+
+        return $out;
     }
 
     private function pdo(): PDO

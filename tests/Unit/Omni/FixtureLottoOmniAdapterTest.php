@@ -8,62 +8,52 @@ use App\Omni\FixtureLottoOmniAdapter;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Regola di selezione del lotto Omni per l'export (§6-bis), specchio della logica dell'adapter Access:
- * si propone SEMPRE un lotto Omni con giacenza reale > 0 (l'import in Omni non deve mai andare in
- * negativo). FIFO sul piu' vecchio con giacenza; se il lotto esatto e' esaurito/negativo, fallback per
- * solo articolo. Logica pura, nessun DB.
+ * Elenco dei lotti Omni con giacenza (§6-bis), specchio dell'adapter Access: solo lotti con giacenza > 0,
+ * in ordine FIFO per il match esatto articolo+lotto, poi in coda i lotti dello stesso articolo (fallback).
+ * Serve al traduttore per ripartire la quantita' su piu' lotti. Logica pura, nessun DB.
  */
 final class FixtureLottoOmniAdapterTest extends TestCase
 {
-    public function test_prende_il_piu_vecchio_con_giacenza(): void
+    public function test_elenca_i_lotti_con_giacenza_in_ordine_fifo(): void
     {
         $a = new FixtureLottoOmniAdapter([
             ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'OMNI-NEW', 'data' => '2026-05-01', 'giacenza' => 50],
             ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'OMNI-OLD', 'data' => '2026-01-01', 'giacenza' => 20],
         ]);
 
-        self::assertSame('OMNI-OLD', $a->lottoOmni('BURRO', 'LB1'));
+        $res = $a->lottiConGiacenza('BURRO', 'LB1');
+
+        self::assertSame(['OMNI-OLD', 'OMNI-NEW'], array_column($res, 'lotto')); // piu' vecchio prima
+        self::assertEqualsWithDelta(20.0, (float) $res[0]['giacenza'], 1e-9);
     }
 
-    public function test_salta_il_lotto_omni_senza_giacenza(): void
+    public function test_esclude_i_lotti_senza_giacenza(): void
     {
-        // Il piu' vecchio e' negativo: si passa al successivo con giacenza.
         $b = new FixtureLottoOmniAdapter([
-            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'OMNI-OLD-NEG', 'data' => '2026-01-01', 'giacenza' => -5],
-            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'OMNI-MID', 'data' => '2026-03-01', 'giacenza' => 10],
+            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'OMNI-NEG', 'data' => '2026-01-01', 'giacenza' => -5],
+            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'OMNI-OK', 'data' => '2026-03-01', 'giacenza' => 10],
         ]);
 
-        self::assertSame('OMNI-MID', $b->lottoOmni('BURRO', 'LB1'));
+        self::assertSame(['OMNI-OK'], array_column($b->lottiConGiacenza('BURRO', 'LB1'), 'lotto'));
     }
 
-    public function test_fallback_per_articolo_quando_il_lotto_e_esaurito(): void
+    public function test_lotti_dello_stesso_articolo_in_coda_come_fallback(): void
     {
-        // LB1 non ha alcun lotto Omni con giacenza -> si risale per articolo (BURRO) al piu' vecchio
-        // con giacenza, anche se e' un altro lotto ESOLVER (LB2).
         $c = new FixtureLottoOmniAdapter([
-            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'OMNI-LB1', 'data' => '2026-01-01', 'giacenza' => 0],
-            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB2', 'lotto_omni' => 'OMNI-LB2', 'data' => '2026-02-01', 'giacenza' => 30],
-            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB2', 'lotto_omni' => 'OMNI-LB2-NEW', 'data' => '2026-06-01', 'giacenza' => 30],
+            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'OMNI-LB1', 'data' => '2026-02-01', 'giacenza' => 30],
+            ['articolo' => 'BURRO', 'lotto_esolver' => 'LB2', 'lotto_omni' => 'OMNI-LB2', 'data' => '2026-01-01', 'giacenza' => 40],
         ]);
 
-        self::assertSame('OMNI-LB2', $c->lottoOmni('BURRO', 'LB1'));
+        // Match esatto (LB1) prima, poi in coda gli altri lotti dell'articolo — anche se piu' vecchi.
+        self::assertSame(['OMNI-LB1', 'OMNI-LB2'], array_column($c->lottiConGiacenza('BURRO', 'LB1'), 'lotto'));
     }
 
-    public function test_null_se_nessun_lotto_ha_giacenza(): void
+    public function test_nessun_candidato_elenco_vuoto(): void
     {
         $d = new FixtureLottoOmniAdapter([
             ['articolo' => 'BURRO', 'lotto_esolver' => 'LB1', 'lotto_omni' => 'X', 'giacenza' => 0],
         ]);
 
-        self::assertNull($d->lottoOmni('BURRO', 'LB1'));
-    }
-
-    public function test_giacenza_omessa_e_selezionabile(): void
-    {
-        $e = new FixtureLottoOmniAdapter([
-            ['articolo' => 'A', 'lotto_esolver' => 'L', 'lotto_omni' => 'OM'],
-        ]);
-
-        self::assertSame('OM', $e->lottoOmni('A', 'L'));
+        self::assertSame([], $d->lottiConGiacenza('BURRO', 'LB1'));
     }
 }
