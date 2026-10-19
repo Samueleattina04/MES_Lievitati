@@ -138,9 +138,14 @@ return [
     | anti-loop sulla profondita'. 'adapter' segue la stessa sorgente delle giacenze (sqlsrv|fixture).
     */
     'tracciabilita' => [
-        // Sezione disabilitata per ora (doppio scarico impasti condivisi da chiarire col committente):
-        // nasconde la voce di menu e blocca le rotte. Riattivare con MES_TRACCIABILITA_ABILITATA=true.
-        'abilitata' => (bool) env('MES_TRACCIABILITA_ABILITATA', false),
+        // Sezione RISTRETTA (in test): solo gli utenti elencati qui (email del loro account MES, separate
+        // da virgola in MES_TRACCIABILITA_UTENTI) vedono la voce di menu e possono usare le rotte; per
+        // backoffice & co. e' nascosta e bloccata. Vuoto = nessuno (sezione di fatto disattivata).
+        // Es. .env:  MES_TRACCIABILITA_UTENTI=mario.rossi@azienda.it,test@azienda.it
+        'utenti_abilitati' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('MES_TRACCIABILITA_UTENTI', '')),
+        ))),
         'adapter' => env('MES_TRACCIABILITA_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')),
         'tipo_mov_carico' => (int) env('MES_TRACC_TIPO_CARICO', 2),
         'tipo_mov_scarico' => (int) env('MES_TRACC_TIPO_SCARICO', 3),

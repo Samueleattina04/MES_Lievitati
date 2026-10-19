@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -41,9 +42,10 @@ class HandleInertiaRequests extends Middleware
                 // reale e' comunque lato server (Gate/middleware 'can:*').
                 'can' => $user?->ruolo?->permessi() ?? [],
             ],
-            // Sezioni attivabili/disattivabili da config (la UI nasconde quelle spente).
+            // Sezioni a visibilita' condizionata (la UI nasconde quelle non consentite all'utente).
+            // Tracciabilita' in test: visibile solo agli utenti in allowlist (gate 'usare-tracciabilita').
             'features' => [
-                'tracciabilita' => (bool) config('mes.tracciabilita.abilitata'),
+                'tracciabilita' => $user !== null && Gate::forUser($user)->allows('usare-tracciabilita'),
             ],
             // Messaggi flash per i toast/notifiche lato Inertia.
             'flash' => [

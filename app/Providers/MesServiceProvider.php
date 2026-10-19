@@ -179,6 +179,18 @@ class MesServiceProvider extends ServiceProvider
         Gate::define('vedere-genealogia', fn (User $u) => (bool) $u->ruolo?->vedeGenealogia());
         // Avanzamento produzione (operatore + backoffice): area /operatore, /api/sync, chiusura massiva.
         Gate::define('avanzare-produzione', fn (User $u) => (bool) $u->ruolo?->puoAvanzareProduzione());
+
+        // Tracciabilita' (in test): ristretta agli utenti in allowlist (per email), a prescindere dal
+        // ruolo. Nascosta/bloccata per tutti gli altri finche' non si chiarisce il doppio scarico impasti.
+        Gate::define('usare-tracciabilita', function (User $u): bool {
+            $email = mb_strtolower(trim((string) $u->email));
+            if ($email === '') {
+                return false;
+            }
+            $ammessi = array_map(static fn ($e) => mb_strtolower(trim((string) $e)), (array) config('mes.tracciabilita.utenti_abilitati'));
+
+            return in_array($email, $ammessi, true);
+        });
     }
 
     /** @param array<string,mixed> $cfg */

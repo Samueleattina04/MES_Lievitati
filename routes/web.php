@@ -92,12 +92,13 @@ Route::middleware('auth')->group(function () {
         ->name('genealogia.index');
 
     // Tracciabilita' lotto dal gestionale (§6-bis): carichi/scarichi ESOLVER per lotto prodotto finito.
+    // RISTRETTA (in test): solo utenti in allowlist (can:usare-tracciabilita), nascosta a backoffice & co.
     Route::get('/tracciabilita', [TracciabilitaController::class, 'index'])
-        ->middleware('can:vedere-genealogia')
+        ->middleware('can:usare-tracciabilita')
         ->name('tracciabilita.index');
     // Download del file per l'importazione in Omni (una riga per lotto, componenti in orizzontale).
     Route::get('/tracciabilita/omni', [TracciabilitaController::class, 'omni'])
-        ->middleware('can:vedere-genealogia')
+        ->middleware('can:usare-tracciabilita')
         ->name('tracciabilita.omni');
 
     // Check anagrafiche (§ Check): confronto articoli ESOLVER vs Omni + export Excel a due fogli.
