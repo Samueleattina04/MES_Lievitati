@@ -138,6 +138,9 @@ return [
     | anti-loop sulla profondita'. 'adapter' segue la stessa sorgente delle giacenze (sqlsrv|fixture).
     */
     'tracciabilita' => [
+        // Sezione disabilitata per ora (doppio scarico impasti condivisi da chiarire col committente):
+        // nasconde la voce di menu e blocca le rotte. Riattivare con MES_TRACCIABILITA_ABILITATA=true.
+        'abilitata' => (bool) env('MES_TRACCIABILITA_ABILITATA', false),
         'adapter' => env('MES_TRACCIABILITA_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')),
         'tipo_mov_carico' => (int) env('MES_TRACC_TIPO_CARICO', 2),
         'tipo_mov_scarico' => (int) env('MES_TRACC_TIPO_SCARICO', 3),

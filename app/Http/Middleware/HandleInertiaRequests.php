@@ -41,6 +41,10 @@ class HandleInertiaRequests extends Middleware
                 // reale e' comunque lato server (Gate/middleware 'can:*').
                 'can' => $user?->ruolo?->permessi() ?? [],
             ],
+            // Sezioni attivabili/disattivabili da config (la UI nasconde quelle spente).
+            'features' => [
+                'tracciabilita' => (bool) config('mes.tracciabilita.abilitata'),
+            ],
             // Messaggi flash per i toast/notifiche lato Inertia.
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),

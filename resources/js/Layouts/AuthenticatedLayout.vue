@@ -10,6 +10,8 @@ import { Link, usePage } from '@inertiajs/vue3';
 const showingNavigationDropdown = ref(false);
 // Permessi del ruolo: la nav mostra solo le sezioni consentite (§7).
 const can = computed(() => usePage().props.auth?.can ?? {});
+// Sezioni attivabili/disattivabili da config (es. Tracciabilità).
+const features = computed(() => usePage().props.features ?? {});
 </script>
 
 <template>
@@ -64,7 +66,7 @@ const can = computed(() => usePage().props.auth?.can ?? {});
                                     Genealogia
                                 </NavLink>
                                 <NavLink
-                                    v-if="can.vedereGenealogia"
+                                    v-if="can.vedereGenealogia && features.tracciabilita"
                                     :href="route('tracciabilita.index')"
                                     :active="route().current('tracciabilita.*')"
                                 >
@@ -214,7 +216,7 @@ const can = computed(() => usePage().props.auth?.can ?? {});
                             Genealogia
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
-                            v-if="can.vedereGenealogia"
+                            v-if="can.vedereGenealogia && features.tracciabilita"
                             :href="route('tracciabilita.index')"
                             :active="route().current('tracciabilita.*')"
                         >

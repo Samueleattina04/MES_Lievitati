@@ -24,6 +24,7 @@ class TracciabilitaController extends Controller
 {
     public function index(Request $request, TracciabilitaService $tracciabilita): Response
     {
+        self::assertAbilitata();
         self::estendiTempoEsecuzione();
 
         $lotto = trim((string) $request->query('lotto', ''));
@@ -54,6 +55,7 @@ class TracciabilitaController extends Controller
     /** Scarica il file per l'importazione in Omni per il lotto indicato. */
     public function omni(Request $request, TracciabilitaService $tracciabilita, TraduttoreLottiOmni $traduttore): SymfonyResponse
     {
+        self::assertAbilitata();
         self::estendiTempoEsecuzione();
 
         $lotto = trim((string) $request->query('lotto', ''));
@@ -82,6 +84,12 @@ class TracciabilitaController extends Controller
 
             return back()->with('error', 'Generazione file Omni non riuscita: '.$e->getMessage());
         }
+    }
+
+    /** Sezione disabilitata da config: blocca anche l'accesso diretto all'URL (§ Tracciabilità). */
+    private static function assertAbilitata(): void
+    {
+        abort_unless((bool) config('mes.tracciabilita.abilitata'), 404);
     }
 
     /**
