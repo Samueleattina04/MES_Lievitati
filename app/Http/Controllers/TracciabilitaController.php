@@ -27,12 +27,14 @@ class TracciabilitaController extends Controller
         self::estendiTempoEsecuzione();
 
         $lotto = trim((string) $request->query('lotto', ''));
+        // Interruttore per i test: ?proporziona=0 mostra le quantita' grezze (impasto intero).
+        $proporziona = $request->boolean('proporziona', true);
 
         $risultato = null;
         $errore = null;
         if ($lotto !== '') {
             try {
-                $risultato = $tracciabilita->albero($lotto);
+                $risultato = $tracciabilita->albero($lotto, $proporziona);
             } catch (Throwable $e) {
                 Log::error('Tracciabilità fallita', [
                     'lotto' => $lotto,
@@ -48,6 +50,7 @@ class TracciabilitaController extends Controller
             'risultato' => $risultato,
             'omniPronto' => true,
             'errore' => $errore,
+            'proporziona' => $proporziona,
         ]);
     }
 
@@ -60,9 +63,10 @@ class TracciabilitaController extends Controller
         if ($lotto === '') {
             return back()->with('error', 'Indicare un lotto per generare il file Omni.');
         }
+        $proporziona = $request->boolean('proporziona', true);
 
         try {
-            $res = $tracciabilita->albero($lotto);
+            $res = $tracciabilita->albero($lotto, $proporziona);
             if (! $res['trovato']) {
                 return back()->with('error', "Nessun movimento trovato per il lotto {$lotto}.");
             }

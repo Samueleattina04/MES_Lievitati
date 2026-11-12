@@ -20,9 +20,12 @@ final class TracciabilitaService
     ) {}
 
     /**
+     * @param  bool  $proporziona  Se true (default) riscala le materie prime dei semilavorati alla quota
+     *                             realmente usata dal lotto finito; se false mostra le quantita' grezze
+     *                             (impasto intero). Utile per confrontare i due comportamenti.
      * @return array{lotto:string, trovato:bool, nodo:?array<string,mixed>, movimenti:list<array<string,mixed>>, produzioni:list<array<string,mixed>>}
      */
-    public function albero(string $lottoRadice): array
+    public function albero(string $lottoRadice, bool $proporziona = true): array
     {
         $lottoRadice = trim($lottoRadice);
         if ($lottoRadice === '') {
@@ -72,8 +75,8 @@ final class TracciabilitaService
 
         // Fattore di proporzione per lotto di produzione: quota del batch usata da questo lotto finito,
         // per scaricare solo le quantita' realmente usate (impasto condiviso tra piu' finiti -> non si
-        // scarica l'impasto intero per ognuno).
-        $fattore = $this->fattoriProduzione($lottoRadice, $consumiPerLotto, $carichi);
+        // scarica l'impasto intero per ognuno). Se $proporziona e' false -> nessun riscalo (quantita' grezze).
+        $fattore = $proporziona ? $this->fattoriProduzione($lottoRadice, $consumiPerLotto, $carichi) : [];
 
         $nodo = $this->costruisciNodo($lottoRadice, $consumiPerLotto, $carichi, $fattore, []);
         $trovato = isset($carichi[$lottoRadice]) || ! empty($consumiPerLotto[$lottoRadice]);

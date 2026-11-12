@@ -8,13 +8,20 @@ const props = defineProps({
     risultato: { type: Object, default: null },
     omniPronto: { type: Boolean, default: false },
     errore: { type: String, default: null },
+    proporziona: { type: Boolean, default: true },
 });
 
 const messaggioErrore = computed(() => props.errore || usePage().props.flash?.error);
 const ricerca = ref(props.lotto);
+// Interruttore per i test: quantità proporzionate (quota usata) vs grezze (impasto intero).
+const proporzionato = ref(props.proporziona);
 
 function cerca() {
-    router.get(route('tracciabilita.index'), { lotto: ricerca.value }, { preserveState: true });
+    router.get(
+        route('tracciabilita.index'),
+        { lotto: ricerca.value, proporziona: proporzionato.value ? 1 : 0 },
+        { preserveState: true },
+    );
 }
 
 // Appiattisce l'albero (prodotto -> componenti -> semilavorati) per una vista indentata.
@@ -80,7 +87,7 @@ const colore = {
                     <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500">Cerca</button>
                     <a
                         v-if="omniPronto && trovato"
-                        :href="route('tracciabilita.omni', { lotto })"
+                        :href="route('tracciabilita.omni', { lotto, proporziona: proporzionato ? 1 : 0 })"
                         class="rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500"
                     >
                         Scarica per Omni
@@ -95,6 +102,21 @@ const colore = {
                         Scarica per Omni
                     </button>
                 </form>
+
+                <!-- Interruttore test: quantità proporzionate (quota usata) vs grezze (impasto intero). -->
+                <div class="flex items-center gap-3 text-sm">
+                    <label class="inline-flex cursor-pointer items-center gap-2 text-gray-700">
+                        <input type="checkbox" v-model="proporzionato" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" @change="cerca" />
+                        Quantità proporzionate alla quota usata
+                    </label>
+                    <span
+                        v-if="trovato"
+                        class="rounded-full px-3 py-0.5 text-xs font-semibold"
+                        :class="proporzionato ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-800'"
+                    >
+                        {{ proporzionato ? 'Modalità: proporzionata' : 'Modalità: grezza (impasto intero)' }}
+                    </span>
+                </div>
 
                 <div v-if="lotto && !trovato" class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     Nessun movimento trovato per il lotto "{{ lotto }}". Verifica il codice lotto del prodotto finito.
