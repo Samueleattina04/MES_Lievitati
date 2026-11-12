@@ -17,6 +17,8 @@ final class TracciabilitaService
         private readonly MovimentiLottoSourceInterface $source,
         private readonly int $maxLivelli = 12,
         private readonly int $maxNodi = 500,
+        private readonly int $decimaliQuantita = 3,
+        private readonly bool $arrotondaEccesso = false,
     ) {}
 
     /**
@@ -149,10 +151,10 @@ final class TracciabilitaService
                 'data' => $carico?->data ?? ($consumi[0]->data ?? null),
                 'quantita_prodotta' => $carico?->quantita,
                 // Quantita' riscalata per la quota usata dal lotto finito (no doppio scarico impasti).
-                'componenti' => array_map(static fn (MovimentoLotto $c) => [
+                'componenti' => array_map(fn (MovimentoLotto $c) => [
                     'articolo' => $c->articolo,
                     'lotto' => $c->lotto,
-                    'quantita' => (float) $c->quantita * $f,
+                    'quantita' => $this->arrotonda((float) $c->quantita * $f),
                     'um' => $c->um,
                 ], $consumi),
             ];
@@ -194,7 +196,7 @@ final class TracciabilitaService
                 'articolo' => $c->articolo,
                 'lotto' => $c->lotto,
                 // Quantita' riscalata per la quota usata dal lotto finito (coerente con l'export Omni).
-                'quantita' => (float) $c->quantita * $f,
+                'quantita' => $this->arrotonda((float) $c->quantita * $f),
                 'um' => $c->um,
                 'magazzino' => $c->magazzino,
                 'data' => $c->data,
@@ -238,6 +240,19 @@ final class TracciabilitaService
         usort($out, static fn (array $a, array $b) => self::chiaveData($a['data'] ?? null) <=> self::chiaveData($b['data'] ?? null));
 
         return $out;
+    }
+
+    /** Arrotonda una quantita' ai decimali configurati; per eccesso (ceil) se richiesto. */
+    private function arrotonda(float $v): float
+    {
+        $dec = max(0, $this->decimaliQuantita);
+        if ($this->arrotondaEccesso) {
+            $f = 10 ** $dec;
+
+            return ceil($v * $f) / $f;
+        }
+
+        return round($v, $dec);
     }
 
     /** Chiave ordinabile (timestamp) da una data 'd/m/Y H.i.s'; le date assenti vanno in fondo. */
