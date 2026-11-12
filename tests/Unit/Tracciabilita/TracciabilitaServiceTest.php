@@ -133,6 +133,41 @@ final class TracciabilitaServiceTest extends TestCase
         self::assertNotNull($semi['figlio']);
     }
 
+    public function test_proporziona_le_materie_dellimpasto_per_la_quota_usata(): void
+    {
+        $movimenti = [
+            // Finito 100-1 usa 0,25 dell'impasto 200-1.
+            ['tipo' => 'carico', 'articolo' => 'PANETTONE', 'lotto' => '100-1', 'quantita' => 10, 'um' => 'PZ', 'magazzino' => '01', 'causale' => 'Carico da produzione'],
+            ['tipo' => 'scarico', 'lotto_prodotto' => '100-1', 'articolo_prodotto' => 'PANETTONE', 'articolo' => 'IMPASTO', 'lotto' => '200-1', 'quantita' => 0.25, 'um' => 'NR', 'magazzino' => '06', 'causale' => 'Consumo'],
+            // Impasto 200-1 prodotto come 1 intero, con 100 kg di farina (dell'intero batch).
+            ['tipo' => 'carico', 'articolo' => 'IMPASTO', 'lotto' => '200-1', 'quantita' => 1, 'um' => 'NR', 'magazzino' => '01', 'causale' => 'Carico da produzione'],
+            ['tipo' => 'scarico', 'lotto_prodotto' => '200-1', 'articolo_prodotto' => 'IMPASTO', 'articolo' => 'FARINA', 'lotto' => 'FAR9', 'quantita' => 100, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'Consumo'],
+        ];
+
+        $res = (new TracciabilitaService(new FixtureMovimentiAdapter($movimenti)))->albero('100-1');
+        $righe = \App\Tracciabilita\OmniExport::fogli($res['produzioni'])[0]['rows'];
+
+        $trova = static function (array $righe, string $prod, string $comp): ?array {
+            foreach ($righe as $r) {
+                if (($r[1] ?? null) === $prod && ($r[2] ?? null) === $comp) {
+                    return $r;
+                }
+            }
+
+            return null;
+        };
+
+        // Il finito ha usato 0,25 di impasto: riga invariata.
+        $rImp = $trova($righe, '100-1', '200-1');
+        self::assertNotNull($rImp);
+        self::assertEqualsWithDelta(0.25, (float) $rImp[3], 1e-9);
+
+        // La farina dell'impasto e' scaricata al 25%: 100 * 0,25 = 25 (NON 100).
+        $rFar = $trova($righe, '200-1', 'FAR9');
+        self::assertNotNull($rFar);
+        self::assertEqualsWithDelta(25.0, (float) $rFar[3], 1e-9);
+    }
+
     public function test_export_omni_solo_foglio_nuovo_una_riga_per_componente(): void
     {
         $res = $this->service()->albero('PAN-1');

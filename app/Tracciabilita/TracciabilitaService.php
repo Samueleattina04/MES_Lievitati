@@ -70,7 +70,12 @@ final class TracciabilitaService
             $carichi[$car->lotto] = $car;
         }
 
-        $nodo = $this->costruisciNodo($lottoRadice, $consumiPerLotto, $carichi, []);
+        // Fattore di proporzione per lotto di produzione: quota del batch usata da questo lotto finito,
+        // per scaricare solo le quantita' realmente usate (impasto condiviso tra piu' finiti -> non si
+        // scarica l'impasto intero per ognuno).
+        $fattore = $this->fattoriProduzione($lottoRadice, $consumiPerLotto, $carichi);
+
+        $nodo = $this->costruisciNodo($lottoRadice, $consumiPerLotto, $carichi, $fattore, []);
         $trovato = isset($carichi[$lottoRadice]) || ! empty($consumiPerLotto[$lottoRadice]);
 
         return [
@@ -78,8 +83,46 @@ final class TracciabilitaService
             'trovato' => $trovato,
             'nodo' => $nodo,
             'movimenti' => $this->flatten($consumiPerLotto, $carichi),
-            'produzioni' => $this->produzioni($consumiPerLotto, $carichi),
+            'produzioni' => $this->produzioni($consumiPerLotto, $carichi, $fattore),
         ];
+    }
+
+    /**
+     * Fattore di proporzione per ogni lotto di produzione = quota del suo batch attribuibile al lotto
+     * finito radice. Radice = 1. Per un semilavorato C consumato dal padre P:
+     *   fattore[C] = fattore[P] * (quantita di C usata da P) / (quantita di C prodotta = suo carico).
+     * Cosi' si scaricano, per ogni lotto finito, SOLO le materie prime realmente usate (es. l'impasto
+     * usato al 25% -> 25% delle sue materie prime), evitando di scaricare l'impasto intero per ogni
+     * lotto finito che lo condivide. Se il carico non e' affidabile (assente/<=0) si usa la sola
+     * quantita' consumata (modello "1 batch = 1 intero", coerente coi dati ESOLVER a frazione).
+     *
+     * @param  array<string,list<MovimentoLotto>>  $consumiPerLotto
+     * @param  array<string,MovimentoLotto>  $carichi
+     * @return array<string,float>
+     */
+    private function fattoriProduzione(string $lottoRadice, array $consumiPerLotto, array $carichi): array
+    {
+        $fattore = [$lottoRadice => 1.0];
+        $coda = [$lottoRadice];
+
+        while ($coda !== []) {
+            $p = array_shift($coda);
+            $fp = $fattore[$p] ?? 1.0;
+            foreach ($consumiPerLotto[$p] ?? [] as $c) {
+                // Solo i lotti di produzione (che hanno propri consumi) si proporzionano; prima occ. vince.
+                if (! isset($consumiPerLotto[$c->lotto]) || isset($fattore[$c->lotto])) {
+                    continue;
+                }
+                $prodotta = ($carichi[$c->lotto] ?? null)?->quantita;
+                $quota = ($prodotta !== null && $prodotta > 0)
+                    ? (float) $c->quantita / (float) $prodotta
+                    : (float) $c->quantita;
+                $fattore[$c->lotto] = $fp * $quota;
+                $coda[] = $c->lotto;
+            }
+        }
+
+        return $fattore;
     }
 
     /**
@@ -88,22 +131,25 @@ final class TracciabilitaService
      *
      * @param  array<string,list<MovimentoLotto>>  $consumiPerLotto
      * @param  array<string,MovimentoLotto>  $carichi
+     * @param  array<string,float>  $fattore  quota per lotto di produzione (vedi fattoriProduzione)
      * @return list<array<string,mixed>>
      */
-    private function produzioni(array $consumiPerLotto, array $carichi): array
+    private function produzioni(array $consumiPerLotto, array $carichi, array $fattore): array
     {
         $out = [];
         foreach ($consumiPerLotto as $lottoProdotto => $consumi) {
             $carico = $carichi[$lottoProdotto] ?? null;
+            $f = $fattore[$lottoProdotto] ?? 1.0;
             $out[] = [
                 'lotto' => $lottoProdotto,
                 'articolo' => $carico?->articolo ?? ($consumi[0]->articoloProdotto ?? ''),
                 'data' => $carico?->data ?? ($consumi[0]->data ?? null),
                 'quantita_prodotta' => $carico?->quantita,
+                // Quantita' riscalata per la quota usata dal lotto finito (no doppio scarico impasti).
                 'componenti' => array_map(static fn (MovimentoLotto $c) => [
                     'articolo' => $c->articolo,
                     'lotto' => $c->lotto,
-                    'quantita' => $c->quantita,
+                    'quantita' => (float) $c->quantita * $f,
                     'um' => $c->um,
                 ], $consumi),
             ];
@@ -115,10 +161,11 @@ final class TracciabilitaService
     /**
      * @param  array<string,list<MovimentoLotto>>  $consumiPerLotto
      * @param  array<string,MovimentoLotto>  $carichi
+     * @param  array<string,float>  $fattore  quota per lotto di produzione (vedi fattoriProduzione)
      * @param  list<string>  $percorso
      * @return array<string,mixed>|null
      */
-    private function costruisciNodo(string $lotto, array $consumiPerLotto, array $carichi, array $percorso): ?array
+    private function costruisciNodo(string $lotto, array $consumiPerLotto, array $carichi, array $fattore, array $percorso): ?array
     {
         if (in_array($lotto, $percorso, true)) {
             return null; // ciclo non atteso: interrompe
@@ -127,6 +174,7 @@ final class TracciabilitaService
 
         $carico = $carichi[$lotto] ?? null;
         $consumi = $consumiPerLotto[$lotto] ?? [];
+        $f = $fattore[$lotto] ?? 1.0;
 
         $articolo = $carico?->articolo ?? '';
         if ($articolo === '' && $consumi !== []) {
@@ -136,13 +184,14 @@ final class TracciabilitaService
         $componenti = [];
         foreach ($consumi as $c) {
             $figlio = isset($consumiPerLotto[$c->lotto])
-                ? $this->costruisciNodo($c->lotto, $consumiPerLotto, $carichi, $percorso)
+                ? $this->costruisciNodo($c->lotto, $consumiPerLotto, $carichi, $fattore, $percorso)
                 : null;
 
             $componenti[] = [
                 'articolo' => $c->articolo,
                 'lotto' => $c->lotto,
-                'quantita' => $c->quantita,
+                // Quantita' riscalata per la quota usata dal lotto finito (coerente con l'export Omni).
+                'quantita' => (float) $c->quantita * $f,
                 'um' => $c->um,
                 'magazzino' => $c->magazzino,
                 'data' => $c->data,
