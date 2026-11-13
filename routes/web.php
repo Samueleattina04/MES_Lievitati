@@ -121,6 +121,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/carichi-produzione/omni', [CarichiProduzioneController::class, 'omni'])
         ->middleware('can:esportare')
         ->name('carichi-produzione.omni');
+    // Stato "già scaricato in Omni" (JSON), caricato in background dalla pagina Carichi.
+    Route::get('/carichi-produzione/stato-omni', [CarichiProduzioneController::class, 'statoOmni'])
+        ->middleware('can:esportare')
+        ->name('carichi-produzione.stato-omni');
 
     // Export tracciati (§10): SOLO chi ha il permesso 'esportare' (backoffice + admin, NON pianificazione).
     // Un tracciato per gestionale di destinazione ('esolver' | 'omni').

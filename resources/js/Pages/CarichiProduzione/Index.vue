@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     operatore: { type: String, default: '' },
@@ -73,9 +73,39 @@ const urlDownload = computed(() => {
     return route('carichi-produzione.scarica', q);
 });
 
-// Stato "già scaricato in Omni" per lotto PF (mappa lotto => n. scarichi) e link download Omni per riga.
-const scarichiOmni = computed(() => props.risultato?.scarichiOmni || {});
+// Stato "già scaricato in Omni" per lotto PF: caricato in BACKGROUND (fetch) per non rallentare la
+// pagina. Mappa lotto => n. scarichi; link download Omni per riga.
+const statoOmni = ref({});
+const caricandoOmni = ref(false);
 const urlOmni = (lotto) => route('carichi-produzione.omni', { lotto });
+
+async function caricaStatoOmni() {
+    const lotti = [...new Set(righe.value.map((r) => r.lotto).filter(Boolean))];
+    if (!lotti.length) {
+        statoOmni.value = {};
+        return;
+    }
+    caricandoOmni.value = true;
+    try {
+        const params = new URLSearchParams();
+        lotti.forEach((l) => params.append('lotti[]', l));
+        const resp = await fetch(route('carichi-produzione.stato-omni') + '?' + params.toString(), {
+            headers: { Accept: 'application/json' },
+        });
+        statoOmni.value = resp.ok ? await resp.json() : {};
+    } catch (e) {
+        statoOmni.value = {};
+    } finally {
+        caricandoOmni.value = false;
+    }
+}
+
+onMounted(caricaStatoOmni);
+// Dopo ogni "Aggiorna"/cambio filtro ricarico lo stato Omni per le nuove righe.
+watch(() => props.risultato, () => {
+    statoOmni.value = {};
+    caricaStatoOmni();
+});
 
 // In tabella mostriamo solo la data (l'orario resta nel dato grezzo).
 const soloData = (d) => (d ? String(d).split(' ')[0] : '');
@@ -243,14 +273,17 @@ const qta = (n) => Number(n ?? 0).toLocaleString('it-IT', { maximumFractionDigit
                                     <td class="px-3 py-1.5 text-gray-600">{{ r.macrofamiglia }}</td>
                                     <td class="px-3 py-1.5 text-gray-600">{{ r.microfamiglia }}</td>
                                     <td class="whitespace-nowrap px-3 py-1.5">
-                                        <span
-                                            v-if="(scarichiOmni[r.lotto] || 0) > 0"
-                                            class="rounded bg-rose-100 px-1.5 py-0.5 text-xs font-semibold text-rose-700"
-                                            :title="'Già scaricato in Omni (' + scarichiOmni[r.lotto] + ' scarichi)'"
-                                        >
-                                            già scaricato ({{ scarichiOmni[r.lotto] }})
-                                        </span>
-                                        <span v-else class="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">da scaricare</span>
+                                        <span v-if="caricandoOmni" class="text-xs text-gray-400">…</span>
+                                        <template v-else>
+                                            <span
+                                                v-if="(statoOmni[r.lotto] || 0) > 0"
+                                                class="rounded bg-rose-100 px-1.5 py-0.5 text-xs font-semibold text-rose-700"
+                                                :title="'Già scaricato in Omni (' + statoOmni[r.lotto] + ' scarichi)'"
+                                            >
+                                                già scaricato ({{ statoOmni[r.lotto] }})
+                                            </span>
+                                            <span v-else class="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">da scaricare</span>
+                                        </template>
                                         <a :href="urlOmni(r.lotto)" class="ml-2 text-xs font-semibold text-indigo-600 hover:underline">file Omni</a>
                                     </td>
                                 </tr>

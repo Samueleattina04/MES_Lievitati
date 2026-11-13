@@ -9,6 +9,7 @@ use App\CarichiProduzione\Contracts\CarichiProduzioneSourceInterface;
 use App\CarichiProduzione\FiltroFamiglie;
 use App\Support\XlsxWriter;
 use App\Tracciabilita\TracciabilitaOmniExport;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -27,7 +28,7 @@ class CarichiProduzioneController extends Controller
     /** Anteprima massima mostrata in pagina (il file Excel contiene tutto). */
     private const ANTEPRIMA = 200;
 
-    public function index(Request $request, CarichiProduzioneSourceInterface $source, TracciabilitaOmniExport $omni): Response
+    public function index(Request $request, CarichiProduzioneSourceInterface $source): Response
     {
         self::estendiTempoEsecuzione();
 
@@ -48,9 +49,9 @@ class CarichiProduzioneController extends Controller
                 'anteprima' => self::ANTEPRIMA,
                 // Opzioni per le checklist: valori presenti nel periodo (prima del filtro famiglie).
                 'opzioni' => FiltroFamiglie::opzioni($tutti),
-                // Colonna "Omni": per i lotti mostrati, quanti scarichi risultano gia' presenti (>0).
-                'scarichiOmni' => $omni->scarichiPerLotti(array_map(static fn ($c) => $c->lotto, $filtrati)),
             ];
+            // NB: lo stato "già scaricato in Omni" NON si calcola qui (interrogare Access per tutti i
+            // lotti rallenta l'apertura della pagina): lo carica la UI in background via stato-omni.
         } catch (Throwable $e) {
             Log::error('Carichi di produzione falliti', ['errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
             $errore = 'Errore nel recupero dei carichi di produzione: '.$e->getMessage();
@@ -117,6 +118,21 @@ class CarichiProduzioneController extends Controller
 
             return back()->with('error', 'Generazione file Omni non riuscita: '.$e->getMessage());
         }
+    }
+
+    /**
+     * Stato "già scaricato in Omni" per un elenco di lotti (JSON leggero, chiamato dalla UI in
+     * background per non rallentare l'apertura della pagina). Mappa lotto => n. scarichi (solo > 0).
+     */
+    public function statoOmni(Request $request, TracciabilitaOmniExport $omni): JsonResponse
+    {
+        self::estendiTempoEsecuzione();
+
+        $lotti = self::arrayParam($request, 'lotti');
+        // Limite di sicurezza: l'anteprima mostra al massimo ANTEPRIMA righe.
+        $lotti = array_slice(array_values(array_unique($lotti)), 0, self::ANTEPRIMA);
+
+        return response()->json($omni->scarichiPerLotti($lotti));
     }
 
     /** Operatore creatore del documento: dalla query (?operatore=) o dal default di config. */
