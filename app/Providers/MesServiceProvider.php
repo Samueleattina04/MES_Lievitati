@@ -19,8 +19,11 @@ use App\Check\SqlServerArticoliEsolverAdapter;
 use App\Export\EsportazioneService;
 use App\Export\Templates\EsolverVersamentiCsvTemplate;
 use App\Omni\AccessLottoOmniAdapter;
+use App\Omni\AccessScarichiOmniAdapter;
 use App\Omni\Contracts\LottoOmniSourceInterface;
+use App\Omni\Contracts\ScarichiOmniSourceInterface;
 use App\Omni\FixtureLottoOmniAdapter;
+use App\Omni\FixtureScarichiOmniAdapter;
 use App\Ordini\OrderExplosionPlanner;
 use App\Produzione\ChiusuraMassivaService;
 use App\Produzione\FaseWorkflowService;
@@ -115,6 +118,20 @@ class MesServiceProvider extends ServiceProvider
             return match ($driver) {
                 'access' => new AccessLottoOmniAdapter((array) ($config['connessione'] ?? []), (array) ($config['lotti'] ?? [])),
                 'fixture' => new FixtureLottoOmniAdapter(),
+                default => throw new InvalidArgumentException(
+                    "Adapter Omni non valido: '{$driver}'. Valori ammessi: 'access', 'fixture'."
+                ),
+            };
+        });
+
+        // Check "scarico gia' presente" in Omni (§6-bis, anti doppio-scarico): reale (Access) o fixture.
+        $this->app->singleton(ScarichiOmniSourceInterface::class, function (): ScarichiOmniSourceInterface {
+            $config = (array) config('mes.omni');
+            $driver = (string) ($config['adapter'] ?? 'fixture');
+
+            return match ($driver) {
+                'access' => new AccessScarichiOmniAdapter((array) ($config['connessione'] ?? []), (array) ($config['scarichi'] ?? [])),
+                'fixture' => new FixtureScarichiOmniAdapter(),
                 default => throw new InvalidArgumentException(
                     "Adapter Omni non valido: '{$driver}'. Valori ammessi: 'access', 'fixture'."
                 ),

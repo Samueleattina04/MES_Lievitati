@@ -210,6 +210,19 @@ return [
             'col_valore' => env('MES_OMNI_COL_VALORE', 'Valore Movimento'), // +carico / -scarico
             'col_link' => env('MES_OMNI_COL_LINK', 'IDLinkfattlotti'),      // FK verso T_Linkfattlotti
         ],
+
+        // Check "scarico gia' presente" per lotto di PRODUZIONE (anti doppio-scarico, §6-bis).
+        // Catena verificata: T_Linkfattlotti.[Lotto entrata] = lotto PF (con IDProduzione valorizzato)
+        // -> IDProduzione -> COUNT righe in T_ContatoreLEXLP con lo stesso IDProduzione. Se > 0 la
+        // produzione e' gia' stata scaricata in Omni (si esclude dal file e si segnala in pagina).
+        'scarichi' => [
+            'tabella_link' => env('MES_OMNI_SCA_TAB_LINK', 'T_Linkfattlotti'),
+            'col_lotto_pf' => env('MES_OMNI_SCA_COL_LOTTO_PF', 'Lotto entrata'), // lotto del prodotto finito
+            'col_produzione' => env('MES_OMNI_SCA_COL_PRODUZIONE', 'IDProduzione'),
+            'tabella_contatore' => env('MES_OMNI_SCA_TAB_CONTATORE', 'T_ContatoreLEXLP'),
+            'col_contatore_produzione' => env('MES_OMNI_SCA_COL_CONT_PROD', 'IDProduzione'),
+            'col_contatore_pk' => env('MES_OMNI_SCA_COL_CONT_PK', 'IDContatoreLExLP'),
+        ],
     ],
 
     /*

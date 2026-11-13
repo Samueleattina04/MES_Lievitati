@@ -9,6 +9,8 @@ const props = defineProps({
     omniPronto: { type: Boolean, default: false },
     errore: { type: String, default: null },
     proporziona: { type: Boolean, default: true },
+    // Mappa lottoProduzione => n. scarichi già presenti in Omni (anti doppio-scarico).
+    scarichiOmni: { type: Object, default: () => ({}) },
 });
 
 const messaggioErrore = computed(() => props.errore || usePage().props.flash?.error);
@@ -49,6 +51,12 @@ function flatten(nodo, depth = 0, acc = []) {
 const albero = computed(() => flatten(props.risultato?.nodo));
 const movimenti = computed(() => props.risultato?.movimenti || []);
 const trovato = computed(() => props.risultato?.trovato === true);
+
+// Scarichi già presenti in Omni: badge sul lotto cercato + nota sulle produzioni escluse dal file.
+const scarichiOmni = computed(() => props.scarichiOmni || {});
+const rootGiaScaricato = computed(() => (scarichiOmni.value[props.lotto] || 0) > 0);
+const lottiGiaScaricati = computed(() => Object.keys(scarichiOmni.value));
+const giaScaricato = (lotto) => (scarichiOmni.value[lotto] || 0) > 0;
 
 // In tabella mostriamo solo la data (l'orario resta nel file Omni).
 const soloData = (d) => (d ? String(d).split(' ')[0] : '');
@@ -123,6 +131,16 @@ const colore = {
                 </div>
 
                 <div v-if="trovato" class="space-y-6">
+                    <!-- Stato scarico in Omni (anti doppio-scarico) -->
+                    <div v-if="rootGiaScaricato" class="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                        ⚠️ Il lotto <strong>{{ lotto }}</strong> risulta <strong>già scaricato in Omni</strong>
+                        ({{ scarichiOmni[lotto] }} scarichi): verrà escluso dal file per non creare un doppio scarico.
+                    </div>
+                    <div v-else-if="lottiGiaScaricati.length" class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        {{ lottiGiaScaricati.length }} produzione/i dell'albero risultano già scaricate in Omni e
+                        <strong>verranno escluse</strong> dal file: {{ lottiGiaScaricati.join(', ') }}.
+                    </div>
+
                     <!-- Albero distinta (cosa è stato usato) -->
                     <div class="rounded-lg bg-white p-5 shadow-sm">
                         <h3 class="mb-3 font-semibold text-gray-800">Distinta risalita (cosa è stato usato)</h3>
@@ -131,6 +149,12 @@ const colore = {
                                 <span :class="colore[r.tipo]">{{ r.articolo }}</span>
                                 <span v-if="r.lotto" class="text-gray-500"> · lotto {{ r.lotto }}</span>
                                 <span v-if="r.qta != null" class="text-gray-400"> ({{ r.qta }} {{ r.um }})</span>
+                                <span
+                                    v-if="r.tipo !== 'materia_prima' && giaScaricato(r.lotto)"
+                                    class="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-xs font-semibold text-rose-700"
+                                >
+                                    già scaricato Omni
+                                </span>
                             </li>
                         </ul>
                     </div>
