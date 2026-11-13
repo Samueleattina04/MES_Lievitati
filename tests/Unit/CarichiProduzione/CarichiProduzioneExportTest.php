@@ -33,14 +33,31 @@ final class CarichiProduzioneExportTest extends TestCase
         self::assertSame([
             'Data', 'Codice articolo', 'Descrizione', 'Lotto', 'Lotto PF', 'Quantità', 'UM',
             'Magazzino', 'Causale', 'Cod.Op.Mag', 'Operatore', 'Famiglia', 'Macrofamiglia', 'Microfamiglia',
+            'Già scaricato Omni',
         ], $fogli[0]['rows'][0]);
 
-        // La data in tabella/file e' senza orario; i campi famiglia sono in coda.
+        // La data in tabella/file e' senza orario; famiglie in coda; stato Omni "No" senza mappa.
         self::assertSame([
             '10/11/2026', 'PAN0104', 'Panettone 1kg', '6412-27826111', '6412-27826111', 320.0, 'PZ',
-            '01', '103', '850', 'N.CELESTINO', 'Lievitati', 'Dolci', 'Panettoni',
+            '01', '103', '850', 'N.CELESTINO', 'Lievitati', 'Dolci', 'Panettoni', 'No',
         ], $fogli[0]['rows'][1]);
         self::assertCount(2, $fogli[0]['rows']);
+    }
+
+    public function test_colonna_omni_con_scarichi(): void
+    {
+        $carichi = [
+            new CaricoProduzione(
+                data: '10/11/2026 08.15.00', articolo: 'PAN0104', descrizione: '',
+                lotto: '6412-27826111', quantita: 1, um: 'PZ', magazzino: '01', lottoPf: '6412-27826111',
+                causale: '103', codOpMag: '850', operatore: 'N.CELESTINO',
+            ),
+        ];
+
+        $fogli = CarichiProduzioneExport::fogli($carichi, ['6412-27826111' => 7]);
+
+        // Ultima colonna = stato Omni "Sì (7)".
+        self::assertSame('Sì (7)', $fogli[0]['rows'][1][14]);
     }
 
     public function test_data_vuota_resta_vuota(): void

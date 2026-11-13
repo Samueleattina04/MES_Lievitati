@@ -8,6 +8,7 @@ use App\CarichiProduzione\CarichiProduzioneExport;
 use App\CarichiProduzione\Contracts\CarichiProduzioneSourceInterface;
 use App\CarichiProduzione\FiltroFamiglie;
 use App\Support\XlsxWriter;
+use App\Tracciabilita\TracciabilitaOmniExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -26,7 +27,7 @@ class CarichiProduzioneController extends Controller
     /** Anteprima massima mostrata in pagina (il file Excel contiene tutto). */
     private const ANTEPRIMA = 200;
 
-    public function index(Request $request, CarichiProduzioneSourceInterface $source): Response
+    public function index(Request $request, CarichiProduzioneSourceInterface $source, TracciabilitaOmniExport $omni): Response
     {
         self::estendiTempoEsecuzione();
 
@@ -47,6 +48,8 @@ class CarichiProduzioneController extends Controller
                 'anteprima' => self::ANTEPRIMA,
                 // Opzioni per le checklist: valori presenti nel periodo (prima del filtro famiglie).
                 'opzioni' => FiltroFamiglie::opzioni($tutti),
+                // Colonna "Omni": per i lotti mostrati, quanti scarichi risultano gia' presenti (>0).
+                'scarichiOmni' => $omni->scarichiPerLotti(array_map(static fn ($c) => $c->lotto, $filtrati)),
             ];
         } catch (Throwable $e) {
             Log::error('Carichi di produzione falliti', ['errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
@@ -64,8 +67,8 @@ class CarichiProduzioneController extends Controller
         ]);
     }
 
-    /** Scarica il file Excel dei carichi di produzione (un foglio "Carichi"). */
-    public function scarica(Request $request, CarichiProduzioneSourceInterface $source): SymfonyResponse
+    /** Scarica il file Excel dei carichi di produzione (un foglio "Carichi", con colonna stato Omni). */
+    public function scarica(Request $request, CarichiProduzioneSourceInterface $source, TracciabilitaOmniExport $omni): SymfonyResponse
     {
         self::estendiTempoEsecuzione();
 
@@ -73,7 +76,8 @@ class CarichiProduzioneController extends Controller
             [$da, $a] = self::intervallo($request);
             $tutti = $source->carichi(self::operatore($request), self::codOpMag(), $da, $a);
             $filtrati = FiltroFamiglie::applica($tutti, self::selezioniFamiglie($request));
-            $xlsx = XlsxWriter::scrivi(CarichiProduzioneExport::fogli($filtrati));
+            $scarichiOmni = $omni->scarichiPerLotti(array_map(static fn ($c) => $c->lotto, $filtrati));
+            $xlsx = XlsxWriter::scrivi(CarichiProduzioneExport::fogli($filtrati, $scarichiOmni));
 
             return response($xlsx, 200, [
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -83,6 +87,35 @@ class CarichiProduzioneController extends Controller
             Log::error('Export carichi di produzione fallito', ['errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
 
             return back()->with('error', 'Generazione del file dei carichi non riuscita: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Scarica il file Omni per un singolo lotto PF (stesso export della Tracciabilità): ricostruisce
+     * la distinta, esclude le produzioni già scaricate in Omni, traduce i lotti e genera l'xlsx.
+     */
+    public function omni(Request $request, TracciabilitaOmniExport $omni): SymfonyResponse
+    {
+        self::estendiTempoEsecuzione();
+
+        $lotto = trim((string) $request->query('lotto', ''));
+
+        try {
+            $res = $omni->fileOmniPerLotto($lotto, $request->boolean('proporziona', true));
+            if (! $res['ok']) {
+                return back()->with('error', $res['errore'] ?? 'Generazione file Omni non riuscita.');
+            }
+
+            $nome = preg_replace('/[^A-Za-z0-9_-]/', '_', $lotto) ?: 'lotto';
+
+            return response($res['xlsx'], 200, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => 'attachment; filename="Omni_'.$nome.'.xlsx"',
+            ]);
+        } catch (Throwable $e) {
+            Log::error('Export Omni (carichi) fallito', ['lotto' => $lotto, 'errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
+
+            return back()->with('error', 'Generazione file Omni non riuscita: '.$e->getMessage());
         }
     }
 

@@ -117,6 +117,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/carichi-produzione/scarica', [CarichiProduzioneController::class, 'scarica'])
         ->middleware('can:esportare')
         ->name('carichi-produzione.scarica');
+    // File Omni per singolo lotto PF (stesso export della Tracciabilità), dalla riga dei Carichi.
+    Route::get('/carichi-produzione/omni', [CarichiProduzioneController::class, 'omni'])
+        ->middleware('can:esportare')
+        ->name('carichi-produzione.omni');
 
     // Export tracciati (§10): SOLO chi ha il permesso 'esportare' (backoffice + admin, NON pianificazione).
     // Un tracciato per gestionale di destinazione ('esolver' | 'omni').

@@ -14,17 +14,20 @@ final class CarichiProduzioneExport
     private const INTESTAZIONE = [
         'Data', 'Codice articolo', 'Descrizione', 'Lotto', 'Lotto PF', 'Quantità', 'UM',
         'Magazzino', 'Causale', 'Cod.Op.Mag', 'Operatore', 'Famiglia', 'Macrofamiglia', 'Microfamiglia',
+        'Già scaricato Omni',
     ];
 
     /**
      * @param  list<CaricoProduzione>  $carichi
+     * @param  array<string,int>  $scarichiOmni  mappa lotto => n. scarichi gia' presenti in Omni (>0)
      * @return list<array{name:string, rows:list<list<string|int|float|null>>}>
      */
-    public static function fogli(array $carichi): array
+    public static function fogli(array $carichi, array $scarichiOmni = []): array
     {
         $righe = [self::INTESTAZIONE];
 
         foreach ($carichi as $c) {
+            $n = (int) ($scarichiOmni[$c->lotto] ?? 0);
             $righe[] = [
                 self::soloData($c->data),
                 $c->articolo,
@@ -40,6 +43,7 @@ final class CarichiProduzioneExport
                 $c->famiglia,
                 $c->macrofamiglia,
                 $c->microfamiglia,
+                $n > 0 ? 'Sì ('.$n.')' : 'No',
             ];
         }
 

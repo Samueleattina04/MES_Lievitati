@@ -73,6 +73,10 @@ const urlDownload = computed(() => {
     return route('carichi-produzione.scarica', q);
 });
 
+// Stato "già scaricato in Omni" per lotto PF (mappa lotto => n. scarichi) e link download Omni per riga.
+const scarichiOmni = computed(() => props.risultato?.scarichiOmni || {});
+const urlOmni = (lotto) => route('carichi-produzione.omni', { lotto });
+
 // In tabella mostriamo solo la data (l'orario resta nel dato grezzo).
 const soloData = (d) => (d ? String(d).split(' ')[0] : '');
 const qta = (n) => Number(n ?? 0).toLocaleString('it-IT', { maximumFractionDigits: 6 });
@@ -219,6 +223,7 @@ const qta = (n) => Number(n ?? 0).toLocaleString('it-IT', { maximumFractionDigit
                                     <th class="px-3 py-2.5">Famiglia</th>
                                     <th class="px-3 py-2.5">Macrofamiglia</th>
                                     <th class="px-3 py-2.5">Microfamiglia</th>
+                                    <th class="px-3 py-2.5">Omni</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
@@ -237,9 +242,20 @@ const qta = (n) => Number(n ?? 0).toLocaleString('it-IT', { maximumFractionDigit
                                     <td class="px-3 py-1.5 text-gray-600">{{ r.famiglia }}</td>
                                     <td class="px-3 py-1.5 text-gray-600">{{ r.macrofamiglia }}</td>
                                     <td class="px-3 py-1.5 text-gray-600">{{ r.microfamiglia }}</td>
+                                    <td class="whitespace-nowrap px-3 py-1.5">
+                                        <span
+                                            v-if="(scarichiOmni[r.lotto] || 0) > 0"
+                                            class="rounded bg-rose-100 px-1.5 py-0.5 text-xs font-semibold text-rose-700"
+                                            :title="'Già scaricato in Omni (' + scarichiOmni[r.lotto] + ' scarichi)'"
+                                        >
+                                            già scaricato ({{ scarichiOmni[r.lotto] }})
+                                        </span>
+                                        <span v-else class="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">da scaricare</span>
+                                        <a :href="urlOmni(r.lotto)" class="ml-2 text-xs font-semibold text-indigo-600 hover:underline">file Omni</a>
+                                    </td>
                                 </tr>
                                 <tr v-if="righe.length === 0">
-                                    <td colspan="14" class="px-3 py-3 text-center text-gray-400">Nessun carico trovato</td>
+                                    <td colspan="15" class="px-3 py-3 text-center text-gray-400">Nessun carico trovato</td>
                                 </tr>
                             </tbody>
                         </table>
