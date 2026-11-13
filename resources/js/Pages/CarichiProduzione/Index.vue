@@ -63,15 +63,17 @@ function aggiorna() {
     router.get(route('carichi-produzione.index'), q, { preserveState: true });
 }
 
-// Il download rispetta i filtri ATTUALMENTE applicati (quelli negli props, non le spunte non ancora inviate).
-const urlDownload = computed(() => {
+// I download rispettano i filtri ATTUALMENTE applicati (quelli negli props, non le spunte non ancora inviate).
+function filtriApplicati() {
     const q = { operatore: props.operatore, da: props.da, a: props.a };
     const sel = props.selezionate || {};
     if (sel.famiglia?.length) q.fam = sel.famiglia;
     if (sel.macrofamiglia?.length) q.macro = sel.macrofamiglia;
     if (sel.microfamiglia?.length) q.micro = sel.microfamiglia;
-    return route('carichi-produzione.scarica', q);
-});
+    return q;
+}
+const urlDownload = computed(() => route('carichi-produzione.scarica', filtriApplicati()));
+const urlOmniBatch = computed(() => route('carichi-produzione.scarica-omni', filtriApplicati()));
 
 // Stato "già scaricato in Omni" per lotto PF: caricato in BACKGROUND (fetch) per non rallentare la
 // pagina. Mappa lotto => n. scarichi; link download Omni per riga.
@@ -166,6 +168,23 @@ const qta = (n) => Number(n ?? 0).toLocaleString('it-IT', { maximumFractionDigit
                         class="rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white opacity-40"
                     >
                         Scarica Excel
+                    </button>
+                    <a
+                        v-if="risultato && totale > 0"
+                        :href="urlOmniBatch"
+                        class="rounded-md bg-teal-600 px-4 py-2 font-semibold text-white hover:bg-teal-500"
+                        title="Genera un unico file Omni per i carichi filtrati, saltando quelli già scaricati"
+                    >
+                        Scarica Omni
+                    </a>
+                    <button
+                        v-else
+                        type="button"
+                        disabled
+                        title="Nessun carico da esportare"
+                        class="rounded-md bg-teal-600 px-4 py-2 font-semibold text-white opacity-40"
+                    >
+                        Scarica Omni
                     </button>
                 </form>
 

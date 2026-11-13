@@ -74,9 +74,53 @@ final class TracciabilitaOmniExport
             return ['ok' => false, 'errore' => 'Indicare un lotto per generare il file Omni.'];
         }
 
+        $r = $this->produzioniTradotte($lotto, $proporziona);
+        if (! $r['trovato']) {
+            return ['ok' => false, 'errore' => "Nessun movimento trovato per il lotto {$lotto}."];
+        }
+        if ($r['produzioni'] === []) {
+            return ['ok' => false, 'errore' => 'Tutte le produzioni del lotto risultano già scaricate in Omni: nessuna riga da esportare.'];
+        }
+
+        return ['ok' => true, 'xlsx' => $this->xlsx($r['produzioni'])];
+    }
+
+    /**
+     * Produzioni Omni (tradotte, escluse le gia' scaricate) di un singolo lotto PF. Vuoto se il lotto
+     * non ha movimenti o e' tutto gia' scaricato. Usato per comporre un file Omni cumulativo (Carichi).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function produzioniOmniPerLotto(string $lotto, bool $proporziona = true): array
+    {
+        return $this->produzioniTradotte(trim($lotto), $proporziona)['produzioni'];
+    }
+
+    /**
+     * Costruisce il file xlsx Omni da un elenco di produzioni gia' pronte (tradotte).
+     *
+     * @param  list<array<string,mixed>>  $produzioni
+     */
+    public function xlsx(array $produzioni): string
+    {
+        return XlsxWriter::scrivi(OmniExport::fogli($produzioni, (array) config('mes.export.omni')));
+    }
+
+    /**
+     * Nucleo condiviso: dal lotto PF -> albero -> esclude le produzioni gia' scaricate in Omni ->
+     * traduce i lotti fornitore nei lotti Omni.
+     *
+     * @return array{trovato:bool, produzioni:list<array<string,mixed>>}
+     */
+    private function produzioniTradotte(string $lotto, bool $proporziona): array
+    {
+        if ($lotto === '') {
+            return ['trovato' => false, 'produzioni' => []];
+        }
+
         $res = $this->tracciabilita->albero($lotto, $proporziona);
         if (! ($res['trovato'] ?? false)) {
-            return ['ok' => false, 'errore' => "Nessun movimento trovato per il lotto {$lotto}."];
+            return ['trovato' => false, 'produzioni' => []];
         }
 
         // Guardia anti doppio-scarico: le produzioni gia' scaricate in Omni si escludono dal file.
@@ -88,10 +132,7 @@ final class TracciabilitaOmniExport
                 static fn (array $p) => ! isset($giaScaricati[(string) ($p['lotto'] ?? '')]),
             ));
         }
-        if ($produzioni === []) {
-            return ['ok' => false, 'errore' => 'Tutte le produzioni del lotto risultano già scaricate in Omni: nessuna riga da esportare.'];
-        }
 
-        return ['ok' => true, 'xlsx' => XlsxWriter::scrivi(OmniExport::fogli($produzioni, (array) config('mes.export.omni')))];
+        return ['trovato' => true, 'produzioni' => $produzioni];
     }
 }

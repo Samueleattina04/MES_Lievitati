@@ -121,6 +121,62 @@ class CarichiProduzioneController extends Controller
     }
 
     /**
+     * Scarica UN UNICO file Omni per tutti i carichi filtrati (stesso export della Tracciabilità):
+     * salta subito le produzioni già scaricate in Omni (veloce) e per le altre ricostruisce la
+     * distinta, traduce i lotti e unisce tutto. Limite di sicurezza sul numero di produzioni.
+     */
+    public function scaricaOmni(Request $request, CarichiProduzioneSourceInterface $source, TracciabilitaOmniExport $omni): SymfonyResponse
+    {
+        self::estendiTempoEsecuzione();
+
+        try {
+            [$da, $a] = self::intervallo($request);
+            $tutti = $source->carichi(self::operatore($request), self::codOpMag(), $da, $a);
+            $filtrati = FiltroFamiglie::applica($tutti, self::selezioniFamiglie($request));
+
+            $lotti = array_values(array_unique(array_filter(
+                array_map(static fn ($c) => $c->lotto, $filtrati),
+                static fn (string $l) => $l !== '',
+            )));
+            if ($lotti === []) {
+                return back()->with('error', 'Nessun carico nel periodo selezionato.');
+            }
+
+            // Salta subito i lotti già scaricati in Omni: così si ricostruisce la distinta (operazione
+            // pesante) solo per quelli da scaricare davvero.
+            $giaScaricati = $omni->scarichiPerLotti($lotti);
+            $daScaricare = array_values(array_filter($lotti, static fn (string $l) => ! isset($giaScaricati[$l])));
+            if ($daScaricare === []) {
+                return back()->with('error', 'Tutti i carichi del periodo risultano già scaricati in Omni: niente da esportare.');
+            }
+
+            $max = max(1, (int) config('mes.carichi_produzione.max_omni_batch', 50));
+            if (count($daScaricare) > $max) {
+                return back()->with('error', "Troppi lotti da scaricare (".count($daScaricare)."): restringi il periodo o i filtri (max {$max} per file).");
+            }
+
+            $produzioni = [];
+            foreach ($daScaricare as $lotto) {
+                foreach ($omni->produzioniOmniPerLotto($lotto, true) as $p) {
+                    $produzioni[] = $p;
+                }
+            }
+            if ($produzioni === []) {
+                return back()->with('error', 'Nessuna riga da esportare (tutte già scaricate in Omni).');
+            }
+
+            return response($omni->xlsx($produzioni), 200, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => 'attachment; filename="CarichiOmni.xlsx"',
+            ]);
+        } catch (Throwable $e) {
+            Log::error('Export Omni cumulativo (carichi) fallito', ['errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
+
+            return back()->with('error', 'Generazione file Omni non riuscita: '.$e->getMessage());
+        }
+    }
+
+    /**
      * Stato "già scaricato in Omni" per un elenco di lotti (JSON leggero, chiamato dalla UI in
      * background per non rallentare l'apertura della pagina). Mappa lotto => n. scarichi (solo > 0).
      */

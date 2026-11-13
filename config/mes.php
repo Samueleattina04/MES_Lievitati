@@ -288,6 +288,11 @@ return [
         // carichi, altrimenti la query su tutta la storia esaurisce la memoria. Modificabile in UI.
         'giorni_default' => (int) env('MES_CARICHI_GIORNI', 90),
 
+        // Numero massimo di produzioni "da scaricare" nel file Omni cumulativo (bottone Scarica Omni):
+        // ricostruire la distinta di ognuna e' pesante, quindi oltre questo limite si chiede di
+        // restringere i filtri. Le produzioni gia' scaricate NON contano (vengono saltate).
+        'max_omni_batch' => (int) env('MES_CARICHI_MAX_OMNI', 50),
+
         // Operatore creatore del documento (filtro di default; modificabile da UI con ?operatore=).
         'operatore' => env('MES_CARICHI_OPERATORE', 'N.CELESTINO'),
 
