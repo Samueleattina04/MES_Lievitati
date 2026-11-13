@@ -13,12 +13,14 @@ use App\CarichiProduzione\CaricoProduzione;
 interface CarichiProduzioneSourceInterface
 {
     /**
-     * Carichi di produzione filtrati per codici operazione magazzino e per operatore creatore
-     * del documento (DocElencoGenerale.FirmaCreazOperatore).
+     * Carichi di produzione filtrati per codici operazione magazzino, operatore creatore del
+     * documento (DocElencoGen.FirmaCreazOperatore) e intervallo di date (sulla data registrazione).
      *
      * @param  string  $operatore  firma operatore creatore; '' = nessun filtro operatore
      * @param  list<string>  $codOpMag  codici operazione magazzino ammessi; [] = nessun filtro
+     * @param  ?string  $da  data minima 'Y-m-d' inclusa; null = nessun limite inferiore
+     * @param  ?string  $a  data massima 'Y-m-d' inclusa; null = nessun limite superiore
      * @return list<CaricoProduzione>
      */
-    public function carichi(string $operatore, array $codOpMag): array;
+    public function carichi(string $operatore, array $codOpMag, ?string $da = null, ?string $a = null): array;
 }

@@ -268,6 +268,13 @@ return [
         'adapter' => env('MES_CARICHI_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')),
         'timeout' => (int) env('MES_CARICHI_TIMEOUT', 180),
 
+        // Limite memoria PHP per la pagina (MovimMagazzino e' grande): default 128M non basta.
+        'memoria' => env('MES_CARICHI_MEMORIA', '512M'),
+
+        // Finestra di default (giorni indietro) quando non si passano date: limita il volume dei
+        // carichi, altrimenti la query su tutta la storia esaurisce la memoria. Modificabile in UI.
+        'giorni_default' => (int) env('MES_CARICHI_GIORNI', 90),
+
         // Operatore creatore del documento (filtro di default; modificabile da UI con ?operatore=).
         'operatore' => env('MES_CARICHI_OPERATORE', 'N.CELESTINO'),
 

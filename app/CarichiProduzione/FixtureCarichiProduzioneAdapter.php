@@ -22,17 +22,32 @@ final class FixtureCarichiProduzioneAdapter implements CarichiProduzioneSourceIn
         $this->carichi = $carichi ?? self::esempi();
     }
 
-    public function carichi(string $operatore, array $codOpMag): array
+    public function carichi(string $operatore, array $codOpMag, ?string $da = null, ?string $a = null): array
     {
         $operatore = trim($operatore);
         $codOpMag = array_values(array_filter(array_map(static fn ($v) => trim((string) $v), $codOpMag), static fn (string $v) => $v !== ''));
+        $da = $da !== null && trim($da) !== '' ? trim($da) : null;
+        $a = $a !== null && trim($a) !== '' ? trim($a) : null;
 
-        $out = array_values(array_filter($this->carichi, static function (CaricoProduzione $c) use ($operatore, $codOpMag): bool {
+        $out = array_values(array_filter($this->carichi, static function (CaricoProduzione $c) use ($operatore, $codOpMag, $da, $a): bool {
             if ($operatore !== '' && mb_strtoupper($c->operatore) !== mb_strtoupper($operatore)) {
                 return false;
             }
             if ($codOpMag !== [] && ! in_array($c->codOpMag, $codOpMag, true)) {
                 return false;
+            }
+            // Data del carico in formato 'd/m/Y H.i.s' -> confronto su 'Y-m-d'.
+            if (($da !== null || $a !== null) && $c->data !== null) {
+                $dt = \DateTime::createFromFormat('d/m/Y H.i.s', $c->data);
+                $giorno = $dt !== false ? $dt->format('Y-m-d') : null;
+                if ($giorno !== null) {
+                    if ($da !== null && $giorno < $da) {
+                        return false;
+                    }
+                    if ($a !== null && $giorno > $a) {
+                        return false;
+                    }
+                }
             }
 
             return true;

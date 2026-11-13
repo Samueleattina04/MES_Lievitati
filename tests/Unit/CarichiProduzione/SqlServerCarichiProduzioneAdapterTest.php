@@ -22,7 +22,7 @@ final class SqlServerCarichiProduzioneAdapterTest extends TestCase
     }
 
     /** @return array{sql:string, bind:array<int,mixed>} */
-    private function eseguiCattura(array $config, string $operatore, array $codOpMag): array
+    private function eseguiCattura(array $config, string $operatore, array $codOpMag, ?string $da = null, ?string $a = null): array
     {
         $catturato = ['sql' => '', 'bind' => []];
         $conn = Mockery::mock(ConnectionInterface::class);
@@ -33,7 +33,7 @@ final class SqlServerCarichiProduzioneAdapterTest extends TestCase
         });
 
         $adapter = new SqlServerCarichiProduzioneAdapter($conn, $config);
-        self::assertSame([], $adapter->carichi($operatore, $codOpMag));
+        self::assertSame([], $adapter->carichi($operatore, $codOpMag, $da, $a));
 
         return $catturato;
     }
@@ -84,6 +84,24 @@ final class SqlServerCarichiProduzioneAdapterTest extends TestCase
         self::assertStringContainsString('MM.[CodOpMag] IN (?,?)', $sql);
         self::assertStringContainsString('D.[FirmaCreazOperatore] = ?', $sql);
         self::assertSame([50, 850, 'N.CELESTINO'], $r['bind']);
+    }
+
+    public function test_filtro_intervallo_date(): void
+    {
+        $r = $this->eseguiCattura($this->config(), 'N.CELESTINO', ['50'], '2026-01-01', '2026-01-31');
+
+        self::assertStringContainsString('MM.[DataRegistrazione] >= ?', $r['sql']);
+        self::assertStringContainsString('MM.[DataRegistrazione] < ?', $r['sql']);
+        // Ordine binding: CodOpMag, operatore, da (inizio), a+1giorno (fine esclusa).
+        self::assertSame([50, 'N.CELESTINO', '2026-01-01 00:00:00', '2026-02-01 00:00:00'], $r['bind']);
+    }
+
+    public function test_senza_date_nessun_filtro_temporale(): void
+    {
+        $r = $this->eseguiCattura($this->config(), 'N.CELESTINO', ['50']);
+
+        self::assertStringNotContainsString('DataRegistrazione] >=', $r['sql']);
+        self::assertSame([50, 'N.CELESTINO'], $r['bind']);
     }
 
     public function test_senza_testata_documento_niente_filtro_operatore(): void

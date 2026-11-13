@@ -6,6 +6,8 @@ import { computed, ref } from 'vue';
 const props = defineProps({
     operatore: { type: String, default: '' },
     codOpMag: { type: Array, default: () => [] },
+    da: { type: String, default: '' },
+    a: { type: String, default: '' },
     risultato: { type: Object, default: null },
     errore: { type: String, default: null },
 });
@@ -17,18 +19,20 @@ const anteprima = computed(() => props.risultato?.anteprima ?? 0);
 const troncato = computed(() => totale.value > righe.value.length);
 
 const filtroOperatore = ref(props.operatore);
+const filtroDa = ref(props.da);
+const filtroA = ref(props.a);
 
 function aggiorna() {
     router.get(
         route('carichi-produzione.index'),
-        { operatore: filtroOperatore.value },
+        { operatore: filtroOperatore.value, da: filtroDa.value, a: filtroA.value },
         { preserveState: true },
     );
 }
 
-// Il download rispetta l'operatore attualmente filtrato.
+// Il download rispetta i filtri attualmente applicati (operatore + intervallo date).
 const urlDownload = computed(() =>
-    route('carichi-produzione.scarica', { operatore: props.operatore }),
+    route('carichi-produzione.scarica', { operatore: props.operatore, da: props.da, a: props.a }),
 );
 
 // In tabella mostriamo solo la data (l'orario resta nel dato grezzo).
@@ -51,8 +55,9 @@ const qta = (n) => Number(n ?? 0).toLocaleString('it-IT', { maximumFractionDigit
                 <div class="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
                     Carichi di produzione presi dalla <strong>prima nota</strong> ESOLVER
                     (CodOpMag <strong>{{ codOpMag.join(' / ') || '—' }}</strong>), creati
-                    dall'operatore indicato (<em>FirmaCreazOperatore</em>). Il file Excel contiene tutte le righe,
-                    con famiglia / macrofamiglia / microfamiglia dell'articolo.
+                    dall'operatore indicato (<em>FirmaCreazOperatore</em>), nell'<strong>intervallo di date</strong> scelto.
+                    Il file Excel contiene tutte le righe del periodo, con famiglia / macrofamiglia / microfamiglia dell'articolo.
+                    <span class="text-gray-400">Suggerimento: periodi ampi su molti anni possono essere pesanti — restringi le date.</span>
                 </div>
 
                 <form class="flex flex-wrap items-end gap-2" @submit.prevent="aggiorna">
@@ -62,8 +67,16 @@ const qta = (n) => Number(n ?? 0).toLocaleString('it-IT', { maximumFractionDigit
                             v-model="filtroOperatore"
                             type="text"
                             placeholder="Es. N.CELESTINO"
-                            class="w-72 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="w-60 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                         />
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Dal</label>
+                        <input v-model="filtroDa" type="date" class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Al</label>
+                        <input v-model="filtroA" type="date" class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
                     </div>
                     <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500">Aggiorna</button>
                     <a

@@ -43,7 +43,7 @@ final class SqlServerCarichiProduzioneAdapter implements CarichiProduzioneSource
         $this->cfg = $config;
     }
 
-    public function carichi(string $operatore, array $codOpMag): array
+    public function carichi(string $operatore, array $codOpMag, ?string $da = null, ?string $a = null): array
     {
         $doc = (array) ($this->cfg['doc'] ?? []);
         $mm = (array) ($this->cfg['movim'] ?? []);
@@ -183,6 +183,24 @@ final class SqlServerCarichiProduzioneAdapter implements CarichiProduzioneSource
         if ($operatore !== '' && $docAttiva) {
             $where[] = "D.{$this->ident($colOperatore)} = ?";
             $bind[] = $operatore;
+        }
+
+        // Intervallo date sulla data registrazione (bound): limita il volume dei carichi.
+        $da = $da !== null ? trim($da) : '';
+        if ($da !== '') {
+            $where[] = "MM.{$colData} >= ?";
+            $bind[] = $da.' 00:00:00';
+        }
+        $a = $a !== null ? trim($a) : '';
+        if ($a !== '') {
+            // Fino a fine giornata: < (a + 1 giorno).
+            try {
+                $fine = (new \DateTime($a.' 00:00:00'))->modify('+1 day')->format('Y-m-d').' 00:00:00';
+                $where[] = "MM.{$colData} < ?";
+                $bind[] = $fine;
+            } catch (\Throwable) {
+                // data non valida: nessun limite superiore
+            }
         }
 
         if ($where !== []) {

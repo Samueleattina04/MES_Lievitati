@@ -31,11 +31,12 @@ class CarichiProduzioneController extends Controller
 
         $operatore = self::operatore($request);
         $codOpMag = self::codOpMag();
+        [$da, $a] = self::intervallo($request);
 
         $risultato = null;
         $errore = null;
         try {
-            $carichi = $source->carichi($operatore, $codOpMag);
+            $carichi = $source->carichi($operatore, $codOpMag, $da, $a);
             $righe = array_map(static fn ($c) => $c->toArray(), $carichi);
             $risultato = [
                 'totale' => count($righe),
@@ -50,6 +51,8 @@ class CarichiProduzioneController extends Controller
         return Inertia::render('CarichiProduzione/Index', [
             'operatore' => $operatore,
             'codOpMag' => $codOpMag,
+            'da' => $da,
+            'a' => $a,
             'risultato' => $risultato,
             'errore' => $errore,
         ]);
@@ -61,7 +64,8 @@ class CarichiProduzioneController extends Controller
         self::estendiTempoEsecuzione();
 
         try {
-            $carichi = $source->carichi(self::operatore($request), self::codOpMag());
+            [$da, $a] = self::intervallo($request);
+            $carichi = $source->carichi(self::operatore($request), self::codOpMag(), $da, $a);
             $xlsx = XlsxWriter::scrivi(CarichiProduzioneExport::fogli($carichi));
 
             return response($xlsx, 200, [
@@ -93,12 +97,52 @@ class CarichiProduzioneController extends Controller
         ), static fn (string $v) => $v !== ''));
     }
 
-    /** La lettura dei movimenti ESOLVER puo' superare i 30s di default: alza il limite. */
+    /**
+     * Intervallo date (Y-m-d) da ?da=/?a=, con default agli ultimi N giorni (config giorni_default).
+     * Serve a limitare il volume dei carichi: su tutta la storia la query esaurisce la memoria.
+     *
+     * @return array{0:string,1:string} [da, a]
+     */
+    private static function intervallo(Request $request): array
+    {
+        $giorni = max(1, (int) config('mes.carichi_produzione.giorni_default', 90));
+        $a = self::dataValida((string) $request->query('a', '')) ?? date('Y-m-d');
+        $da = self::dataValida((string) $request->query('da', '')) ?? date('Y-m-d', strtotime("-{$giorni} days"));
+
+        // Se invertite, le riallinea (da <= a).
+        if ($da > $a) {
+            [$da, $a] = [$a, $da];
+        }
+
+        return [$da, $a];
+    }
+
+    /** Valida una data 'Y-m-d' (ritorna null se vuota o non valida). */
+    private static function dataValida(string $d): ?string
+    {
+        $d = trim($d);
+        if ($d === '') {
+            return null;
+        }
+        $dt = \DateTime::createFromFormat('Y-m-d', $d);
+
+        return ($dt !== false && $dt->format('Y-m-d') === $d) ? $d : null;
+    }
+
+    /**
+     * La lettura dei movimenti ESOLVER puo' superare i 30s di default e consumare molta memoria:
+     * alza tempo e limite di memoria (configurabili).
+     */
     private static function estendiTempoEsecuzione(): void
     {
         $secondi = (int) config('mes.carichi_produzione.timeout', 180);
         if ($secondi > 0 && function_exists('set_time_limit')) {
             @set_time_limit($secondi);
+        }
+
+        $memoria = trim((string) config('mes.carichi_produzione.memoria', '512M'));
+        if ($memoria !== '') {
+            @ini_set('memory_limit', $memoria);
         }
     }
 }
