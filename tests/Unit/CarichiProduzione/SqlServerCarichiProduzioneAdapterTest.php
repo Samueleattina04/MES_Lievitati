@@ -92,8 +92,8 @@ final class SqlServerCarichiProduzioneAdapterTest extends TestCase
 
         self::assertStringContainsString('MM.[DataRegistrazione] >= ?', $r['sql']);
         self::assertStringContainsString('MM.[DataRegistrazione] < ?', $r['sql']);
-        // Ordine binding: CodOpMag, operatore, da (inizio), a+1giorno (fine esclusa).
-        self::assertSame([50, 'N.CELESTINO', '2026-01-01 00:00:00', '2026-02-01 00:00:00'], $r['bind']);
+        // Formato 'YYYYMMDD' (sicuro per SQL Server). Ordine: CodOpMag, operatore, da, a+1giorno (escluso).
+        self::assertSame([50, 'N.CELESTINO', '20260101', '20260201'], $r['bind']);
     }
 
     public function test_senza_date_nessun_filtro_temporale(): void

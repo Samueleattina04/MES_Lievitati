@@ -185,17 +185,24 @@ final class SqlServerCarichiProduzioneAdapter implements CarichiProduzioneSource
             $bind[] = $operatore;
         }
 
-        // Intervallo date sulla data registrazione (bound): limita il volume dei carichi.
+        // Intervallo date sulla data registrazione (bound): limita il volume dei carichi. I valori
+        // sono in formato 'YYYYMMDD' (senza separatori): e' l'unico che SQL Server interpreta sempre
+        // come data a prescindere dalla lingua/DATEFORMAT (con 'YYYY-MM-DD HH:MM:SS' e lingua italiana
+        // la stringa verrebbe letta come anno-giorno-mese -> errore di conversione).
         $da = $da !== null ? trim($da) : '';
         if ($da !== '') {
-            $where[] = "MM.{$colData} >= ?";
-            $bind[] = $da.' 00:00:00';
+            try {
+                $inizio = (new \DateTime($da))->format('Ymd'); // >= inizio giornata
+                $where[] = "MM.{$colData} >= ?";
+                $bind[] = $inizio;
+            } catch (\Throwable) {
+                // data non valida: nessun limite inferiore
+            }
         }
         $a = $a !== null ? trim($a) : '';
         if ($a !== '') {
-            // Fino a fine giornata: < (a + 1 giorno).
             try {
-                $fine = (new \DateTime($a.' 00:00:00'))->modify('+1 day')->format('Y-m-d').' 00:00:00';
+                $fine = (new \DateTime($a))->modify('+1 day')->format('Ymd'); // < giorno dopo (a incluso)
                 $where[] = "MM.{$colData} < ?";
                 $bind[] = $fine;
             } catch (\Throwable) {
