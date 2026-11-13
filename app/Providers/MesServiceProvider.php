@@ -7,6 +7,9 @@ namespace App\Providers;
 use App\Bom\Contracts\BomSourceAdapterInterface;
 use App\Bom\FixtureBomAdapter;
 use App\Bom\SqlServerBomAdapter;
+use App\CarichiProduzione\Contracts\CarichiProduzioneSourceInterface;
+use App\CarichiProduzione\FixtureCarichiProduzioneAdapter;
+use App\CarichiProduzione\SqlServerCarichiProduzioneAdapter;
 use App\Check\AccessArticoliOmniAdapter;
 use App\Check\CheckService;
 use App\Check\CompositeArticoliSource;
@@ -126,6 +129,20 @@ class MesServiceProvider extends ServiceProvider
                 $this->sorgenteArticoliEsolver((array) ($cfg['esolver'] ?? [])),
                 $this->sorgenteArticoliOmni((array) ($cfg['omni'] ?? [])),
             );
+        });
+
+        // Carichi di produzione da prima nota (§ Carichi): reale ESOLVER o fixture (dev/test).
+        $this->app->singleton(CarichiProduzioneSourceInterface::class, function (): CarichiProduzioneSourceInterface {
+            $config = (array) config('mes.carichi_produzione');
+            $driver = (string) ($config['adapter'] ?? 'sqlsrv');
+
+            return match ($driver) {
+                'sqlsrv' => new SqlServerCarichiProduzioneAdapter(DB::connection('sqlsrv_gestionale'), $config),
+                'fixture' => new FixtureCarichiProduzioneAdapter(),
+                default => throw new InvalidArgumentException(
+                    "Adapter carichi di produzione non valido: '{$driver}'. Valori ammessi: 'sqlsrv', 'fixture'."
+                ),
+            };
         });
 
         // Sorgente per riconoscere i lotti di semilavorato gia' esistenti (§5.3, change #3).

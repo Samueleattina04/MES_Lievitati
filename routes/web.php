@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\HomeController as AdminHomeController;
 use App\Http\Controllers\Admin\RepartoController;
 use App\Http\Controllers\Admin\TipoFaseController;
 use App\Http\Controllers\Admin\UtenteController;
+use App\Http\Controllers\CarichiProduzioneController;
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EsportazioneController;
@@ -108,6 +109,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/check/scarica', [CheckController::class, 'scarica'])
         ->middleware('can:esportare')
         ->name('check.scarica');
+
+    // Carichi di produzione da prima nota (§ Carichi): elenco CodOpMag 50/850 per operatore + export Excel.
+    Route::get('/carichi-produzione', [CarichiProduzioneController::class, 'index'])
+        ->middleware('can:esportare')
+        ->name('carichi-produzione.index');
+    Route::get('/carichi-produzione/scarica', [CarichiProduzioneController::class, 'scarica'])
+        ->middleware('can:esportare')
+        ->name('carichi-produzione.scarica');
 
     // Export tracciati (§10): SOLO chi ha il permesso 'esportare' (backoffice + admin, NON pianificazione).
     // Un tracciato per gestionale di destinazione ('esolver' | 'omni').

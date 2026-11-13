@@ -80,6 +80,13 @@ const features = computed(() => usePage().props.features ?? {});
                                     Check
                                 </NavLink>
                                 <NavLink
+                                    v-if="can.esportare"
+                                    :href="route('carichi-produzione.index')"
+                                    :active="route().current('carichi-produzione.*')"
+                                >
+                                    Carichi
+                                </NavLink>
+                                <NavLink
                                     v-if="can.configurare"
                                     :href="route('admin.index')"
                                     :active="route().current('admin.*')"
@@ -228,6 +235,13 @@ const features = computed(() => usePage().props.features ?? {});
                             :active="route().current('check.*')"
                         >
                             Check
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            v-if="can.esportare"
+                            :href="route('carichi-produzione.index')"
+                            :active="route().current('carichi-produzione.*')"
+                        >
+                            Carichi
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
                             v-if="can.configurare"

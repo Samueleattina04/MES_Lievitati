@@ -17,12 +17,14 @@ use Throwable;
  * Esempi:
  *   php artisan gestionale:schema MagProgrLotto MagProgrArticoli
  *   php artisan gestionale:schema MagProgrLotto --sample=5
+ *   php artisan gestionale:schema --cerca=Fami            (elenca le tabelle che contengono "Fami")
  */
 class GestionaleSchemaCommand extends Command
 {
     protected $signature = 'gestionale:schema
-        {tabelle* : Uno o piu nomi di tabella da ispezionare}
-        {--sample=0 : Mostra le prime N righe di esempio (TOP N) per capire i dati}';
+        {tabelle?* : Uno o piu nomi di tabella da ispezionare}
+        {--sample=0 : Mostra le prime N righe di esempio (TOP N) per capire i dati}
+        {--cerca= : Elenca i nomi di tabella che CONTENGONO questo testo (per scoprire tabelle)}';
 
     protected $description = "Elenca le colonne (e opzionalmente righe di esempio) di tabelle del gestionale ESOLVER.";
 
@@ -30,7 +32,23 @@ class GestionaleSchemaCommand extends Command
     {
         $connessione = DB::connection('sqlsrv_gestionale');
 
-        foreach ($this->argument('tabelle') as $tabella) {
+        $cerca = trim((string) $this->option('cerca'));
+        if ($cerca !== '') {
+            $this->cercaTabelle($connessione, $cerca);
+        }
+
+        $tabelle = (array) $this->argument('tabelle');
+        if ($tabelle === []) {
+            if ($cerca === '') {
+                $this->error('Indica almeno un nome di tabella, oppure usa --cerca=TESTO per cercarle.');
+
+                return self::INVALID;
+            }
+
+            return self::SUCCESS;
+        }
+
+        foreach ($tabelle as $tabella) {
             if (! preg_match('/^[A-Za-z0-9_]+$/', (string) $tabella)) {
                 $this->error("Nome tabella non valido: {$tabella}");
 
@@ -80,6 +98,41 @@ class GestionaleSchemaCommand extends Command
         $this->line('Suggerimento: individua 3 colonne — magazzino (per filtrare "06"), giacenza/disponibile, data (FIFO).');
 
         return self::SUCCESS;
+    }
+
+    /** Elenca le tabelle BASE il cui nome contiene $pattern (per scoprire tabelle sconosciute). */
+    private function cercaTabelle(\Illuminate\Database\ConnectionInterface $connessione, string $pattern): void
+    {
+        if (! preg_match('/^[A-Za-z0-9_ ]+$/', $pattern)) {
+            $this->error("Testo di ricerca non valido: {$pattern}");
+
+            return;
+        }
+
+        $this->newLine();
+        $this->line("Tabelle che contengono <info>{$pattern}</info>:");
+
+        try {
+            $rows = $connessione->select(
+                "SELECT TABLE_SCHEMA, TABLE_NAME
+                 FROM INFORMATION_SCHEMA.TABLES
+                 WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME LIKE ?
+                 ORDER BY TABLE_NAME",
+                ['%'.$pattern.'%'],
+            );
+        } catch (Throwable $e) {
+            $this->error('Errore nella ricerca tabelle: '.$e->getMessage());
+
+            return;
+        }
+
+        if ($rows === []) {
+            $this->warn('Nessuna tabella trovata.');
+
+            return;
+        }
+
+        $this->table(['Schema', 'Tabella'], array_map(fn ($r) => [$r->TABLE_SCHEMA, $r->TABLE_NAME], $rows));
     }
 
     private function dimensione(object $c): string

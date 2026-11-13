@@ -248,6 +248,107 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Carichi di produzione da prima nota (ESOLVER) — § Carichi
+    |--------------------------------------------------------------------------
+    |
+    | Elenca i CARICHI di produzione (versamenti a magazzino) presi dalla prima nota ESOLVER,
+    | filtrati per codice operazione magazzino (CodOpMag, es. 50 / 850) e per l'operatore che ha
+    | CREATO il documento (DocElencoGen.FirmaCreazOperatore). Oltre ai dati gia' presenti nella
+    | tracciabilita' (data, articolo, lotto, quantita', magazzino, ...) aggiunge la classificazione
+    | merceologica: famiglia / macrofamiglia / microfamiglia.
+    |
+    | Schema VERIFICATO sul reale (gestionale:schema): MovimMagazzino porta articolo/qta/UM/mag/data/
+    | causale/CodOpMag; la testata documento e' DocElencoGen (DBGruppo+IdDocumento, FirmaCreazOperatore);
+    | classificazione merceologica (descrizioni reali): ArtAnagrafica.CodFamiglia -> Famiglia.Des;
+    | ArtAnagrafica.CodMicrofamigliaArt -> MicrofamArt.Des; macrofamiglia a 2 salti
+    | ArtAnagrafica.CodFamiglia -> Famiglia.CodMacrofamiglia -> MacrofamiglieArt.Des.
+    */
+    'carichi_produzione' => [
+        // 'sqlsrv' (gestionale reale) | 'fixture' (sviluppo/CI/test).
+        'adapter' => env('MES_CARICHI_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')),
+        'timeout' => (int) env('MES_CARICHI_TIMEOUT', 180),
+
+        // Operatore creatore del documento (filtro di default; modificabile da UI con ?operatore=).
+        'operatore' => env('MES_CARICHI_OPERATORE', 'N.CELESTINO'),
+
+        // Codici operazione magazzino che identificano i carichi di produzione (CSV in .env).
+        'cod_op_mag' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('MES_CARICHI_COD_OP_MAG', '50,850')),
+        ))),
+
+        // Testata documento (prima nota): porta l'operatore creatore. VERIFICATA: DocElencoGen,
+        // join su DBGruppo+IdDocumento, operatore in FirmaCreazOperatore. Vuoto = nessun filtro
+        // operatore e colonna Operatore vuota.
+        'doc' => [
+            'tabella' => env('MES_CARICHI_DOC_TABELLA', 'DocElencoGen'),
+            'col_operatore' => env('MES_CARICHI_DOC_COL_OPERATORE', 'FirmaCreazOperatore'),
+            'join' => ['DBGruppo', 'IdDocumento'], // DocElencoGen <-> MovimMagazzino
+        ],
+
+        // MovimMagazzino: sorgente principale (articolo, quantita', UM, magazzino, data, causale, CodOpMag).
+        'movim' => [
+            'tabella' => env('MES_CARICHI_MOVIM_TABELLA', 'MovimMagazzino'),
+            'col_codice' => env('MES_CARICHI_MOVIM_COL_CODICE', 'CodArt'),
+            'col_cod_op_mag' => env('MES_CARICHI_MOVIM_COL_CODOPMAG', 'CodOpMag'),
+            'col_data' => env('MES_CARICHI_MOVIM_COL_DATA', 'DataRegistrazione'),
+            'col_causale' => env('MES_CARICHI_MOVIM_COL_CAUSALE', 'CausaleMag'),
+            'col_quantita' => env('MES_CARICHI_MOVIM_COL_QTA', 'QuantitaUmMag'),
+            'col_um' => env('MES_CARICHI_MOVIM_COL_UM', 'UmMag'),
+            'col_magazzino' => env('MES_CARICHI_MOVIM_COL_MAG', 'CodMag'),
+            'join_lotto' => ['DBGruppo', 'IdDocumento', 'IdRigaDoc', 'IdRigaMag'], // <-> MovimMagLotto
+        ],
+
+        // Dettaglio lotto del movimento: solo il lotto (e lotto del prodotto finito).
+        'movim_lotto' => [
+            'tabella' => env('MES_CARICHI_ML_TABELLA', 'MovimMagLotto'),
+            'col_lotto' => env('MES_CARICHI_ML_COL_LOTTO', 'RifLottoAlfanum'),
+            'col_lotto_pf' => env('MES_CARICHI_ML_COL_LOTTO_PF', 'RifLottoPFAlfanum'),
+        ],
+
+        // Anagrafica articoli: descrizione (join su DBGruppo+CodArt) e codici famiglia.
+        'articoli' => [
+            'tabella' => env('MES_CARICHI_ART_TABELLA', 'ArtAnagrafica'),
+            'col_codice' => env('MES_CARICHI_ART_COL_CODICE', 'CodArt'),
+            'col_descrizione' => env('MES_CARICHI_ART_COL_DESCR', 'DesArt'),
+        ],
+
+        // Classificazione merceologica (descrizioni reali ESOLVER). Ogni livello puo':
+        //   (a) DESCRIZIONE via lookup su ArtAnagrafica -> 'tabella' + 'art_key' (colonna su
+        //       ArtAnagrafica) + 'key' (colonna sulla tabella) + 'descr' (colonna descrizione);
+        //   (b) DESCRIZIONE "a 2 salti" -> 'tabella' + 'via' (altro livello gia' joinato) + 'via_key'
+        //       (colonna su quella tabella) + 'key' + 'descr' — usata dalla macrofamiglia (passa dalla
+        //       Famiglia); i livelli si processano nell'ordine famiglia -> macrofamiglia -> microfamiglia;
+        //   (c) CODICE diretto da ArtAnagrafica -> solo 'art_col' (fallback se la lookup non e' valida);
+        //   vuoto = colonna vuota. Il join include DBGruppo (disattivabile con 'db_gruppo' => false).
+        'famiglie' => [
+            'famiglia' => [
+                'tabella' => env('MES_CARICHI_FAM_TABELLA', 'Famiglia'),
+                'art_key' => env('MES_CARICHI_FAM_ART_KEY', 'CodFamiglia'),
+                'key' => env('MES_CARICHI_FAM_KEY', 'CodFamiglia'),
+                'descr' => env('MES_CARICHI_FAM_DESCR', 'Des'),
+                'art_col' => env('MES_CARICHI_FAM_ART_COL', 'CodFamiglia'), // fallback: codice
+            ],
+            'macrofamiglia' => [
+                // 2 salti: ArtAnagrafica.CodFamiglia -> Famiglia.CodMacrofamiglia -> MacrofamiglieArt.Des
+                'tabella' => env('MES_CARICHI_MACRO_TABELLA', 'MacrofamiglieArt'),
+                'via' => env('MES_CARICHI_MACRO_VIA', 'famiglia'),
+                'via_key' => env('MES_CARICHI_MACRO_VIA_KEY', 'CodMacrofamiglia'),
+                'key' => env('MES_CARICHI_MACRO_KEY', 'CodMacrofamiglia'),
+                'descr' => env('MES_CARICHI_MACRO_DESCR', 'Des'),
+            ],
+            'microfamiglia' => [
+                'tabella' => env('MES_CARICHI_MICRO_TABELLA', 'MicrofamArt'),
+                'art_key' => env('MES_CARICHI_MICRO_ART_KEY', 'CodMicrofamigliaArt'),
+                'key' => env('MES_CARICHI_MICRO_KEY', 'CodMicrofamigliaArt'),
+                'descr' => env('MES_CARICHI_MICRO_DESCR', 'Des'),
+                'art_col' => env('MES_CARICHI_MICRO_ART_COL', 'CodMicrofamigliaArt'), // fallback: codice
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
     |
