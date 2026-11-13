@@ -1,13 +1,14 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
     operatore: { type: String, default: '' },
     codOpMag: { type: Array, default: () => [] },
     da: { type: String, default: '' },
     a: { type: String, default: '' },
+    selezionate: { type: Object, default: () => ({}) },
     risultato: { type: Object, default: null },
     errore: { type: String, default: null },
 });
@@ -22,18 +23,55 @@ const filtroOperatore = ref(props.operatore);
 const filtroDa = ref(props.da);
 const filtroA = ref(props.a);
 
-function aggiorna() {
-    router.get(
-        route('carichi-produzione.index'),
-        { operatore: filtroOperatore.value, da: filtroDa.value, a: filtroA.value },
-        { preserveState: true },
-    );
+// Opzioni delle checklist (valori presenti nel periodo) e selezioni correnti.
+const opzioni = computed(() => props.risultato?.opzioni || { famiglia: [], macrofamiglia: [], microfamiglia: [] });
+const selFamiglia = ref([]);
+const selMacro = ref([]);
+const selMicro = ref([]);
+
+// Inizializza una checklist dalle selezioni applicate; se vuote, tutte spuntate (= nessun filtro).
+function iniziale(gruppo) {
+    const opts = opzioni.value[gruppo] || [];
+    const sel = props.selezionate?.[gruppo] || [];
+    return sel.length ? sel.filter((v) => opts.includes(v)) : [...opts];
+}
+function sincronizza() {
+    selFamiglia.value = iniziale('famiglia');
+    selMacro.value = iniziale('macrofamiglia');
+    selMicro.value = iniziale('microfamiglia');
+}
+sincronizza();
+// Dopo ogni "Aggiorna" i dati cambiano: riallinea le checklist a ciò che il server ha applicato.
+watch(() => props.risultato, sincronizza);
+
+// Manda un gruppo solo se è un sottoinsieme reale (altrimenti = nessun filtro).
+function paramGruppo(checked, opts) {
+    if (!checked.length || checked.length >= opts.length) {
+        return undefined;
+    }
+    return checked;
 }
 
-// Il download rispetta i filtri attualmente applicati (operatore + intervallo date).
-const urlDownload = computed(() =>
-    route('carichi-produzione.scarica', { operatore: props.operatore, da: props.da, a: props.a }),
-);
+function aggiorna() {
+    const q = { operatore: filtroOperatore.value, da: filtroDa.value, a: filtroA.value };
+    const f = paramGruppo(selFamiglia.value, opzioni.value.famiglia);
+    const ma = paramGruppo(selMacro.value, opzioni.value.macrofamiglia);
+    const mi = paramGruppo(selMicro.value, opzioni.value.microfamiglia);
+    if (f) q.fam = f;
+    if (ma) q.macro = ma;
+    if (mi) q.micro = mi;
+    router.get(route('carichi-produzione.index'), q, { preserveState: true });
+}
+
+// Il download rispetta i filtri ATTUALMENTE applicati (quelli negli props, non le spunte non ancora inviate).
+const urlDownload = computed(() => {
+    const q = { operatore: props.operatore, da: props.da, a: props.a };
+    const sel = props.selezionate || {};
+    if (sel.famiglia?.length) q.fam = sel.famiglia;
+    if (sel.macrofamiglia?.length) q.macro = sel.macrofamiglia;
+    if (sel.microfamiglia?.length) q.micro = sel.microfamiglia;
+    return route('carichi-produzione.scarica', q);
+});
 
 // In tabella mostriamo solo la data (l'orario resta nel dato grezzo).
 const soloData = (d) => (d ? String(d).split(' ')[0] : '');
@@ -96,6 +134,66 @@ const qta = (n) => Number(n ?? 0).toLocaleString('it-IT', { maximumFractionDigit
                         Scarica Excel
                     </button>
                 </form>
+
+                <!-- Filtri a checklist per classificazione merceologica (si applicano con "Aggiorna"). -->
+                <div
+                    v-if="risultato && (opzioni.famiglia.length || opzioni.macrofamiglia.length || opzioni.microfamiglia.length)"
+                    class="rounded-lg bg-white p-4 shadow-sm"
+                >
+                    <div class="mb-2 flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-gray-700">Filtri classificazione</h3>
+                        <span class="text-xs text-gray-400">Spunta/deseleziona e premi “Aggiorna”.</span>
+                    </div>
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <div v-if="opzioni.famiglia.length">
+                            <div class="mb-1 flex items-center justify-between">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Famiglia</span>
+                                <span class="space-x-2 text-xs">
+                                    <button type="button" class="text-indigo-600 hover:underline" @click="selFamiglia = [...opzioni.famiglia]">Tutti</button>
+                                    <button type="button" class="text-gray-400 hover:underline" @click="selFamiglia = []">Nessuno</button>
+                                </span>
+                            </div>
+                            <div class="max-h-44 space-y-1 overflow-auto rounded-md border border-gray-100 p-2">
+                                <label v-for="o in opzioni.famiglia" :key="o" class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input type="checkbox" :value="o" v-model="selFamiglia" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                    <span class="truncate">{{ o }}</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div v-if="opzioni.macrofamiglia.length">
+                            <div class="mb-1 flex items-center justify-between">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Macrofamiglia</span>
+                                <span class="space-x-2 text-xs">
+                                    <button type="button" class="text-indigo-600 hover:underline" @click="selMacro = [...opzioni.macrofamiglia]">Tutti</button>
+                                    <button type="button" class="text-gray-400 hover:underline" @click="selMacro = []">Nessuno</button>
+                                </span>
+                            </div>
+                            <div class="max-h-44 space-y-1 overflow-auto rounded-md border border-gray-100 p-2">
+                                <label v-for="o in opzioni.macrofamiglia" :key="o" class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input type="checkbox" :value="o" v-model="selMacro" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                    <span class="truncate">{{ o }}</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div v-if="opzioni.microfamiglia.length">
+                            <div class="mb-1 flex items-center justify-between">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Microfamiglia</span>
+                                <span class="space-x-2 text-xs">
+                                    <button type="button" class="text-indigo-600 hover:underline" @click="selMicro = [...opzioni.microfamiglia]">Tutti</button>
+                                    <button type="button" class="text-gray-400 hover:underline" @click="selMicro = []">Nessuno</button>
+                                </span>
+                            </div>
+                            <div class="max-h-44 space-y-1 overflow-auto rounded-md border border-gray-100 p-2">
+                                <label v-for="o in opzioni.microfamiglia" :key="o" class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input type="checkbox" :value="o" v-model="selMicro" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                    <span class="truncate">{{ o }}</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div v-if="risultato" class="rounded-lg bg-white p-5 shadow-sm">
                     <div class="mb-3 flex items-baseline justify-between">

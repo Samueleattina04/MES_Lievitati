@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\CarichiProduzione\CarichiProduzioneExport;
 use App\CarichiProduzione\Contracts\CarichiProduzioneSourceInterface;
+use App\CarichiProduzione\FiltroFamiglie;
 use App\Support\XlsxWriter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -32,16 +33,20 @@ class CarichiProduzioneController extends Controller
         $operatore = self::operatore($request);
         $codOpMag = self::codOpMag();
         [$da, $a] = self::intervallo($request);
+        $selezionate = self::selezioniFamiglie($request);
 
         $risultato = null;
         $errore = null;
         try {
-            $carichi = $source->carichi($operatore, $codOpMag, $da, $a);
-            $righe = array_map(static fn ($c) => $c->toArray(), $carichi);
+            $tutti = $source->carichi($operatore, $codOpMag, $da, $a);
+            $filtrati = FiltroFamiglie::applica($tutti, $selezionate);
+            $righe = array_map(static fn ($c) => $c->toArray(), $filtrati);
             $risultato = [
                 'totale' => count($righe),
                 'righe' => array_slice($righe, 0, self::ANTEPRIMA),
                 'anteprima' => self::ANTEPRIMA,
+                // Opzioni per le checklist: valori presenti nel periodo (prima del filtro famiglie).
+                'opzioni' => FiltroFamiglie::opzioni($tutti),
             ];
         } catch (Throwable $e) {
             Log::error('Carichi di produzione falliti', ['errore' => $e->getMessage(), 'file' => $e->getFile().':'.$e->getLine()]);
@@ -53,6 +58,7 @@ class CarichiProduzioneController extends Controller
             'codOpMag' => $codOpMag,
             'da' => $da,
             'a' => $a,
+            'selezionate' => $selezionate,
             'risultato' => $risultato,
             'errore' => $errore,
         ]);
@@ -65,8 +71,9 @@ class CarichiProduzioneController extends Controller
 
         try {
             [$da, $a] = self::intervallo($request);
-            $carichi = $source->carichi(self::operatore($request), self::codOpMag(), $da, $a);
-            $xlsx = XlsxWriter::scrivi(CarichiProduzioneExport::fogli($carichi));
+            $tutti = $source->carichi(self::operatore($request), self::codOpMag(), $da, $a);
+            $filtrati = FiltroFamiglie::applica($tutti, self::selezioniFamiglie($request));
+            $xlsx = XlsxWriter::scrivi(CarichiProduzioneExport::fogli($filtrati));
 
             return response($xlsx, 200, [
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -95,6 +102,39 @@ class CarichiProduzioneController extends Controller
             static fn ($v) => trim((string) $v),
             (array) config('mes.carichi_produzione.cod_op_mag', []),
         ), static fn (string $v) => $v !== ''));
+    }
+
+    /**
+     * Selezioni checklist famiglie da ?fam[]=/?macro[]=/?micro[]=. Gruppo assente o vuoto = nessun
+     * filtro (mostra tutto).
+     *
+     * @return array{famiglia:list<string>, macrofamiglia:list<string>, microfamiglia:list<string>}
+     */
+    private static function selezioniFamiglie(Request $request): array
+    {
+        return [
+            'famiglia' => self::arrayParam($request, 'fam'),
+            'macrofamiglia' => self::arrayParam($request, 'macro'),
+            'microfamiglia' => self::arrayParam($request, 'micro'),
+        ];
+    }
+
+    /**
+     * Legge un parametro come lista di stringhe (accetta array o singolo valore), ripulita.
+     *
+     * @return list<string>
+     */
+    private static function arrayParam(Request $request, string $chiave): array
+    {
+        $v = $request->query($chiave, []);
+        if (is_string($v)) {
+            $v = $v === '' ? [] : [$v];
+        }
+        if (! is_array($v)) {
+            $v = [];
+        }
+
+        return array_values(array_filter(array_map(static fn ($x) => trim((string) $x), $v), static fn (string $s) => $s !== ''));
     }
 
     /**
