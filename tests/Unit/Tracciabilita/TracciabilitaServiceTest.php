@@ -168,6 +168,57 @@ final class TracciabilitaServiceTest extends TestCase
         self::assertEqualsWithDelta(25.0, (float) $rFar[3], 1e-9);
     }
 
+    /**
+     * Caso reale (impasto 3 cioccolati): un semilavorato (GLASSA) consumato DUE volte dallo stesso
+     * finito con quantita' diverse (5 KG e 155 KG, batch 160). Le sue materie prime devono essere
+     * proporzionate DIVERSAMENTE per ogni ramo (5/160 e 155/160), non con lo stesso fattore; nell'export
+     * la glassa (consumata per intero: 5+155=160) deve avere le materie al 100%.
+     */
+    public function test_proporziona_per_occorrenza_semilavorato_consumato_due_volte(): void
+    {
+        $movimenti = [
+            ['tipo' => 'carico', 'articolo' => 'IMP3', 'lotto' => '7364-1', 'quantita' => 5, 'um' => 'PZ', 'magazzino' => '01', 'causale' => 'Carico da produzione'],
+            // L'impasto consuma la GLASSA due volte: 5 KG e 155 KG (stesso lotto, prodotto 160 KG).
+            ['tipo' => 'scarico', 'lotto_prodotto' => '7364-1', 'articolo_prodotto' => 'IMP3', 'articolo' => 'GLASSA', 'lotto' => '7372-1', 'quantita' => 5, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'Consumo'],
+            ['tipo' => 'scarico', 'lotto_prodotto' => '7364-1', 'articolo_prodotto' => 'IMP3', 'articolo' => 'GLASSA', 'lotto' => '7372-1', 'quantita' => 155, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'Consumo'],
+            ['tipo' => 'carico', 'articolo' => 'GLASSA', 'lotto' => '7372-1', 'quantita' => 160, 'um' => 'KG', 'magazzino' => '01', 'causale' => 'Carico da produzione'],
+            ['tipo' => 'scarico', 'lotto_prodotto' => '7372-1', 'articolo_prodotto' => 'GLASSA', 'articolo' => 'ALBUME', 'lotto' => 'ALB1', 'quantita' => 54.44, 'um' => 'KG', 'magazzino' => '06', 'causale' => 'Consumo'],
+        ];
+
+        $res = (new TracciabilitaService(new FixtureMovimentiAdapter($movimenti)))->albero('7364-1');
+
+        // Albero: due rami GLASSA (5 e 155), materie proporzionate DIVERSAMENTE.
+        $ramo5 = $ramo155 = null;
+        foreach ($res['nodo']['componenti'] as $c) {
+            if ($c['articolo'] !== 'GLASSA') {
+                continue;
+            }
+            if (abs((float) $c['quantita'] - 5.0) < 1e-6) {
+                $ramo5 = $c;
+            }
+            if (abs((float) $c['quantita'] - 155.0) < 1e-6) {
+                $ramo155 = $c;
+            }
+        }
+        self::assertNotNull($ramo5);
+        self::assertNotNull($ramo155);
+        // 5 KG: albume 54,44 * 5/160 = 1,701.
+        self::assertEqualsWithDelta(1.701, (float) $this->trova($ramo5['figlio']['componenti'], 'ALBUME')['quantita'], 1e-3);
+        // 155 KG: albume 54,44 * 155/160 = 52,739 (NON 1,701 come prima del fix).
+        self::assertEqualsWithDelta(52.739, (float) $this->trova($ramo155['figlio']['componenti'], 'ALBUME')['quantita'], 1e-3);
+
+        // Export: una riga per la glassa, albume TOTALE = 54,44 (5/160 + 155/160 = intero).
+        $righe = \App\Tracciabilita\OmniExport::fogli($res['produzioni'])[0]['rows'];
+        $rAlb = null;
+        foreach ($righe as $r) {
+            if (($r[1] ?? null) === '7372-1' && ($r[2] ?? null) === 'ALB1') {
+                $rAlb = $r;
+            }
+        }
+        self::assertNotNull($rAlb);
+        self::assertEqualsWithDelta(54.44, (float) $rAlb[3], 1e-2);
+    }
+
     public function test_export_omni_solo_foglio_nuovo_una_riga_per_componente(): void
     {
         $res = $this->service()->albero('PAN-1');
