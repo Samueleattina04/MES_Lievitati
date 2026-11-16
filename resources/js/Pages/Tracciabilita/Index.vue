@@ -9,6 +9,8 @@ const props = defineProps({
     omniPronto: { type: Boolean, default: false },
     errore: { type: String, default: null },
     proporziona: { type: Boolean, default: true },
+    // Se false, il flag "quantità grezze" è nascosto: l'utente vede solo le quantità proporzionate.
+    puoGrezzo: { type: Boolean, default: false },
     // Mappa lottoProduzione => n. scarichi già presenti in Omni (anti doppio-scarico).
     scarichiOmni: { type: Object, default: () => ({}) },
 });
@@ -111,8 +113,8 @@ const colore = {
                     </button>
                 </form>
 
-                <!-- Interruttore test: quantità proporzionate (quota usata) vs grezze (impasto intero). -->
-                <div class="flex items-center gap-3 text-sm">
+                <!-- Interruttore (solo utenti abilitati): quantità proporzionate vs grezze (impasto intero). -->
+                <div v-if="puoGrezzo" class="flex items-center gap-3 text-sm">
                     <label class="inline-flex cursor-pointer items-center gap-2 text-gray-700">
                         <input type="checkbox" v-model="proporzionato" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" @change="cerca" />
                         Quantità proporzionate alla quota usata

@@ -146,6 +146,15 @@ return [
             'trim',
             explode(',', (string) env('MES_TRACCIABILITA_UTENTI', '')),
         ))),
+        // Sotto-insieme di utenti che possono DISATTIVARE la proporzione (vedere le quantita' grezze,
+        // impasto intero) tramite il flag in pagina. A tutti gli altri utenti abilitati (es. backoffice)
+        // la Tracciabilita' mostra SEMPRE le quantita' proporzionate: il flag e' nascosto nella UI e
+        // forzato lato server (anche se arriva ?proporziona=0). Default: il solo admin.
+        // Override via .env:  MES_TRACCIABILITA_GREZZO_UTENTI=admin@azienda.it,altro@azienda.it
+        'utenti_grezzo' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('MES_TRACCIABILITA_GREZZO_UTENTI', 'admin@lievitati.local')),
+        ))),
         'adapter' => env('MES_TRACCIABILITA_ADAPTER', env('MES_STOCK_ADAPTER', 'sqlsrv')),
         'tipo_mov_carico' => (int) env('MES_TRACC_TIPO_CARICO', 2),
         'tipo_mov_scarico' => (int) env('MES_TRACC_TIPO_SCARICO', 3),

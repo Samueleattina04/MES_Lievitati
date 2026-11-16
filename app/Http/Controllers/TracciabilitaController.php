@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Tracciabilita\TracciabilitaOmniExport;
 use App\Tracciabilita\TracciabilitaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -26,8 +27,11 @@ class TracciabilitaController extends Controller
         self::estendiTempoEsecuzione();
 
         $lotto = trim((string) $request->query('lotto', ''));
-        // Interruttore per i test: ?proporziona=0 mostra le quantita' grezze (impasto intero).
-        $proporziona = $request->boolean('proporziona', true);
+        // Interruttore per i test: ?proporziona=0 mostra le quantita' grezze (impasto intero). Solo
+        // gli utenti in allowlist (es. admin) possono disattivare la proporzione; per tutti gli altri
+        // (es. backoffice) e' SEMPRE proporzionata, anche se arriva ?proporziona=0.
+        $puoGrezzo = Gate::allows('vedere-grezzo-tracciabilita');
+        $proporziona = $puoGrezzo ? $request->boolean('proporziona', true) : true;
 
         $risultato = null;
         $errore = null;
@@ -54,6 +58,8 @@ class TracciabilitaController extends Controller
             'omniPronto' => true,
             'errore' => $errore,
             'proporziona' => $proporziona,
+            // Se false, la UI nasconde il flag "quantita' grezze" (solo admin puo' disattivare).
+            'puoGrezzo' => $puoGrezzo,
             // Mappa lottoProduzione => n. scarichi gia' presenti in Omni (solo quelli > 0).
             'scarichiOmni' => $scarichi,
         ]);
@@ -65,7 +71,8 @@ class TracciabilitaController extends Controller
         self::estendiTempoEsecuzione();
 
         $lotto = trim((string) $request->query('lotto', ''));
-        $proporziona = $request->boolean('proporziona', true);
+        // Come in index(): solo gli utenti in allowlist possono esportare le quantita' grezze.
+        $proporziona = Gate::allows('vedere-grezzo-tracciabilita') ? $request->boolean('proporziona', true) : true;
 
         try {
             $res = $omni->fileOmniPerLotto($lotto, $proporziona);

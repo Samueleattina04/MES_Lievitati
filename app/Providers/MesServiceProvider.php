@@ -227,6 +227,19 @@ class MesServiceProvider extends ServiceProvider
 
             return in_array($email, $ammessi, true);
         });
+
+        // Flag "quantita' grezze" (impasto intero) della Tracciabilita': solo gli utenti in questa
+        // allowlist dedicata possono DISATTIVARE la proporzione. A tutti gli altri (es. backoffice) le
+        // quantita' sono SEMPRE proporzionate: il flag e' nascosto nella UI e forzato lato server.
+        Gate::define('vedere-grezzo-tracciabilita', function (User $u): bool {
+            $email = mb_strtolower(trim((string) $u->email));
+            if ($email === '') {
+                return false;
+            }
+            $ammessi = array_map(static fn ($e) => mb_strtolower(trim((string) $e)), (array) config('mes.tracciabilita.utenti_grezzo'));
+
+            return in_array($email, $ammessi, true);
+        });
     }
 
     /** @param array<string,mixed> $cfg */
